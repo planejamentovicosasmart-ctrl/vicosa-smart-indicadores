@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "bootstrap": "node scripts/bootstrap.js",
     "agent:cron": "node scripts/run-agent.js",
     "prisma:generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
