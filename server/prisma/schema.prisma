@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IndicatorStatus {
+  NOT_STARTED
+  IN_RESEARCH
+  PARTIAL
+  COMPLETE
+  AWAITING_VALIDATION
+  VALIDATED
+  NEEDS_REQUEST
+  NOT_APPLICABLE
+  REVIEW_NEEDED
+}
+
+enum ValueValidationState {
+  IMPORTED
+  VALIDATED
+  SUPERSEDED
+}
+
+enum FindingStatus {
+  NEW
+  IN_REVIEW
+  ACCEPTED
+  REJECTED
+  INVESTIGATE_LATER
+  AWAITING_VALIDATION
+  VALIDATED
+  SUPERSEDED
+  DIVERGENCE
+}
+
+enum ConfidenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum RunStatus {
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+model Standard {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  title       String
+  subtitle    String?
+  description String?
+  indicators  Indicator[]
+  createdAt   DateTime    @default(now())
+}
+
+model Indicator {
+  id                     String          @id @default(cuid())
+  standardId             String
+  standard               Standard        @relation(fields: [standardId], references: [id], onDelete: Cascade)
+  code                   String
+  name                   String
+  description            String?
+  numeratorDescription   String?
+  denominatorDescription String?
+  unit                   String?
+  formula                String?
+  notes                  String?
+  status                 IndicatorStatus @default(NOT_STARTED)
+  priority               Int             @default(50)
+  sourceRow              Int?
+  searchAttempts         Int             @default(0)
+  lastSearchedAt         DateTime?
+  nextSearchAt           DateTime?
+  values                 IndicatorValue[]
+  findings               AgentFinding[]
+  evidence               Evidence[]
+  history                IndicatorHistory[]
+  auxiliary              AuxiliaryIndicator[]
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@unique([standardId, code])
+  @@index([status])
+  @@index([priority])
+}
+
+model IndicatorValue {
+  id                 String               @id @default(cuid())
+  indicatorId        String
+  indicator          Indicator            @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  isCurrent           Boolean              @default(true)
+  validationState    ValueValidationState @default(IMPORTED)
+  numeratorRaw       String?
+  numeratorNumber    Float?
+  numeratorYear      String?
+  numeratorSource    String?
+  numeratorSourceUrl String?
+  denominatorRaw     String?
+  denominatorNumber  Float?
+  denominatorYear    String?
+  denominatorSource  String?
+  denominatorSourceUrl String?
+  finalRaw           String?
+  finalNumber        Float?
+  finalFormula       String?
+  numeratorFormula   String?
+  denominatorFormula String?
+  validatedAt        DateTime?
+  validatedBy        String?
+  sourceLabel        String?
+  evidence           Evidence[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([indicatorId, isCurrent])
+}
+
+model AgentRun {
+  id                 String        @id @default(cuid())
+  startedAt          DateTime      @default(now())
+  finishedAt         DateTime?
+  status             RunStatus     @default(RUNNING)
+  indicatorsChecked  Int           @default(0)
+  sourcesFound       Int           @default(0)
+  candidatesCreated  Int           @default(0)
+  errorsCount        Int           @default(0)
+  summary            String?
+  error               String?
+  findings            AgentFinding[]
+}
+
+model AgentFinding {
+  id                 String          @id @default(cuid())
+  indicatorId        String
+  indicator          Indicator       @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  agentRunId         String?
+  agentRun            AgentRun?       @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  targetField        String
+  candidateValueRaw  String?
+  candidateValueNumber Float?
+  unit               String?
+  referenceYear      String?
+  sourceName         String
+  sourceOrganization String?
+  sourceType         String?
+  sourceUrl          String?
+  evidenceExcerpt    String?
+  evidenceDocument   String?
+  evidencePage       String?
+  confidenceLevel    ConfidenceLevel @default(LOW)
+  confidenceScore    Int             @default(30)
+  confidenceReason   String?
+  status             FindingStatus   @default(NEW)
+  reviewedAt         DateTime?
+  reviewedBy         String?
+  rejectionReason    String?
+  rawPayload         Json?
+  evidence           Evidence[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([indicatorId, status])
+}
+
+model Evidence {
+  id          String          @id @default(cuid())
+  indicatorId String
+  indicator   Indicator       @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  valueId     String?
+  value       IndicatorValue? @relation(fields: [valueId], references: [id], onDelete: SetNull)
+  findingId   String?
+  finding     AgentFinding?    @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  title       String?
+  organization String?
+  url         String?
+  documentName String?
+  page        String?
+  tableRef    String?
+  excerpt     String?
+  accessedAt  DateTime?
+  notes       String?
+  createdAt   DateTime        @default(now())
+}
+
+model IndicatorHistory {
+  id          String    @id @default(cuid())
+  indicatorId String
+  indicator   Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  action      String
+  actor       String
+  details     Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([indicatorId, createdAt])
+}
+
+model AuxiliaryIndicator {
+  id                 String     @id @default(cuid())
+  code               String?
+  name               String
+  category           String?
+  available          Boolean?
+  valueRaw           String?
+  valueNumber        Float?
+  referenceDate      String?
+  sourceLabel        String?
+  sourceRow          Int?
+  relatedIndicatorId String?
+  relatedIndicator   Indicator? @relation(fields: [relatedIndicatorId], references: [id], onDelete: SetNull)
+  createdAt          DateTime   @default(now())
+
+  @@index([category])
+  @@index([relatedIndicatorId])
+}
