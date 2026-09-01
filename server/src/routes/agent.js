@@ -20,7 +20,7 @@ agentRouter.get('/status', async (_req, res, next) => {
     res.json({
       configured: Boolean(process.env.OPENAI_API_KEY || process.env.TAVILY_API_KEY),
       provider: process.env.OPENAI_API_KEY ? 'OpenAI + pesquisa web' : process.env.TAVILY_API_KEY ? 'Tavily' : 'Não configurado',
-      model: process.env.OPENAI_API_KEY ? (process.env.OPENAI_MODEL || 'gpt-5.6-luna') : null,
+      model: process.env.OPENAI_API_KEY ? (process.env.OPENAI_MODEL || 'gpt-5.6-sol') : null,
       lastRun, runs, newFindings,
       queue: queue.map((i) => ({ ...i, currentValue: i.values[0] || null, values: undefined })),
     });
