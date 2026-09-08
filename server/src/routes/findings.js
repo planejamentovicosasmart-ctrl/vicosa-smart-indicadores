@@ -3,11 +3,103 @@ import { prisma } from '../lib/prisma.js';
 
 export const findingsRouter = Router();
 
+function importedReviewItem(indicator) {
+  const currentValue = indicator.values?.[0] || null;
+  return {
+    id: `imported:${indicator.id}`,
+    kind: 'IMPORTED_VALUE',
+    status: 'AWAITING_VALIDATION',
+    targetField: 'IMPORTED',
+    candidateValueRaw: currentValue?.finalRaw || currentValue?.numeratorRaw || currentValue?.denominatorRaw || null,
+    candidateValueNumber: currentValue?.finalNumber ?? currentValue?.numeratorNumber ?? currentValue?.denominatorNumber ?? null,
+    unit: indicator.unit || null,
+    referenceYear: currentValue?.numeratorYear || currentValue?.denominatorYear || null,
+    sourceName: currentValue?.sourceLabel || currentValue?.numeratorSource || currentValue?.denominatorSource || 'Base fornecida / Geterr',
+    sourceOrganization: null,
+    sourceType: 'Dado importado',
+    sourceUrl: currentValue?.numeratorSourceUrl || currentValue?.denominatorSourceUrl || null,
+    evidenceExcerpt: indicator.notes || null,
+    evidenceDocument: null,
+    evidencePage: null,
+    confidenceLevel: 'MEDIUM',
+    confidenceScore: 60,
+    confidenceReason: 'Dado já fornecido pela equipe e mantido fora da base validada até conferência humana.',
+    createdAt: currentValue?.createdAt || indicator.updatedAt,
+    indicator: { ...indicator, currentValue, values: undefined },
+    evidence: [],
+  };
+}
+
 findingsRouter.get('/', async (req, res, next) => {
   try {
     const status = req.query.status ? String(req.query.status).split(',') : null;
-    const items = await prisma.agentFinding.findMany({ where: status ? { status: { in: status } } : {}, include: { indicator: { include: { standard: true, values: { where: { isCurrent: true }, take: 1 } } }, evidence: true }, orderBy: [{ createdAt: 'desc' }], take: 300 });
-    res.json({ items: items.map((f) => ({ ...f, indicator: { ...f.indicator, currentValue: f.indicator.values[0] || null, values: undefined } })) });
+    const wantsAwaiting = !status || status.includes('AWAITING_VALIDATION');
+
+    const [agentItems, importedIndicators] = await Promise.all([
+      prisma.agentFinding.findMany({
+        where: status ? { status: { in: status } } : {},
+        include: { indicator: { include: { standard: true, values: { where: { isCurrent: true }, take: 1 } } }, evidence: true },
+        orderBy: [{ createdAt: 'desc' }],
+        take: 300,
+      }),
+      wantsAwaiting ? prisma.indicator.findMany({
+        where: {
+          status: 'AWAITING_VALIDATION',
+          values: { some: { isCurrent: true } },
+          findings: { none: { status: { in: ['NEW', 'ACCEPTED', 'AWAITING_VALIDATION', 'DIVERGENCE'] } } },
+        },
+        include: { standard: true, values: { where: { isCurrent: true }, take: 1, orderBy: { createdAt: 'desc' } } },
+        orderBy: [{ standard: { code: 'asc' } }, { sourceRow: 'asc' }],
+        take: 300,
+      }) : Promise.resolve([]),
+    ]);
+
+    const items = agentItems.map((f) => ({
+      ...f,
+      kind: 'AGENT_FINDING',
+      indicator: { ...f.indicator, currentValue: f.indicator.values[0] || null, values: undefined },
+    }));
+
+    const importedItems = importedIndicators.map(importedReviewItem);
+    res.json({ items: [...importedItems, ...items], importedCount: importedItems.length, agentCount: items.length });
+  } catch (error) { next(error); }
+});
+
+findingsRouter.post('/imported/:indicatorId/validate', async (req, res, next) => {
+  const reviewer = req.body.reviewer || 'Equipe Viçosa SMART';
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const indicator = await tx.indicator.findUnique({
+        where: { id: req.params.indicatorId },
+        include: { values: { where: { isCurrent: true }, take: 1, orderBy: { createdAt: 'desc' } } },
+      });
+      if (!indicator) throw new Error('Indicador não encontrado');
+      const current = indicator.values[0] || null;
+      if (!current) throw new Error('Indicador sem valor importado para validar');
+
+      await tx.indicatorValue.update({
+        where: { id: current.id },
+        data: { validationState: 'VALIDATED', validatedAt: new Date(), validatedBy: reviewer },
+      });
+
+      const hasN = Boolean(current.numeratorRaw || current.numeratorNumber !== null && current.numeratorNumber !== undefined);
+      const hasD = Boolean(current.denominatorRaw || current.denominatorNumber !== null && current.denominatorNumber !== undefined);
+      const hasF = Boolean(current.finalRaw || current.finalNumber !== null && current.finalNumber !== undefined);
+      const status = hasF || (hasN && hasD) ? 'VALIDATED' : 'PARTIAL';
+
+      await tx.indicator.update({ where: { id: indicator.id }, data: { status } });
+      await tx.indicatorHistory.create({
+        data: {
+          indicatorId: indicator.id,
+          action: 'IMPORTED_VALUE_VALIDATED',
+          actor: reviewer,
+          details: { valueId: current.id, sourceLabel: current.sourceLabel || null },
+        },
+      });
+
+      return { indicatorId: indicator.id, valueId: current.id, status };
+    });
+    res.json(result);
   } catch (error) { next(error); }
 });
 
