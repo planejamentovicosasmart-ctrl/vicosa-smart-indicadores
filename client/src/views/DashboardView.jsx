@@ -10,13 +10,15 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
   useEffect(() => { api.dashboard().then(setData).catch((e) => setError(e.message)); }, [refreshKey]);
   if (error) return <div className="state-card error-state"><AlertCircle/> {error}</div>;
   if (!data) return <div className="skeleton-page"><div/><div/><div/></div>;
+
   const metrics = [
-    ['Encontrados', data.counts.complete, 'Indicadores com dados suficientes', CheckCircle2, 'green'],
+    ['Com dados', data.counts.complete, 'Indicadores com dado suficiente ou validado', CheckCircle2, 'green'],
     ['Parciais', data.counts.partial, 'Ainda falta uma parte do cálculo', CircleDashed, 'amber'],
-    ['Não encontrados', data.counts.notFound, 'Na fila de investigação', Search, 'blue'],
-    ['Aguardando validação', data.counts.awaitingValidation, 'Descobertas aceitas pela equipe', Clock3, 'purple'],
+    ['Sem dados', data.counts.notFound, 'Ainda precisam de investigação', Search, 'blue'],
+    ['Aguardando validação', data.counts.awaitingValidation, 'Dados já localizados, ainda não homologados', Clock3, 'purple'],
     ['Validados', data.counts.validated, 'Dados aprovados para uso', ShieldCheck, 'teal'],
   ];
+
   return <div className="page-content">
     <section className="hero-section">
       <div><span className="eyebrow">Cidades sustentáveis, inteligentes e resilientes</span><h1>Central de Indicadores</h1><p>Uma visão única do que já temos, do que ainda falta e do que o agente encontrou para Viçosa.</p></div>
@@ -28,9 +30,15 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
     <section className="section-block">
       <div className="section-heading"><div><span className="eyebrow">Normas ABNT ISO</span><h2>Progresso por norma</h2></div><button className="text-button" onClick={() => go('abnt')}>Ver todos <ArrowRight size={15}/></button></div>
       <div className="standards-grid">{data.standards.map((s,idx) => <article className={`standard-card standard-${idx+1}`} key={s.code} onClick={() => go('abnt', s.code)}>
-        <div className="standard-top"><div><span>ABNT NBR ISO</span><strong>{s.code}</strong></div><ProgressRing value={s.progress}/></div>
+        <div className="standard-top"><div><span>ABNT NBR ISO</span><strong>{s.code}</strong></div><ProgressRing value={s.progress} label="Cobertura de dados"/></div>
         <h3>{s.subtitle}</h3><p>{s.description}</p>
-        <div className="standard-stats"><span><b>{s.complete+s.validated}</b> encontrados</span><span><b>{s.partial}</b> parciais</span><span><b>{s.notStarted}</b> pendentes</span></div>
+        <div className="standard-stats standard-stats-expanded">
+          <span><b>{s.total}</b> total</span>
+          <span><b>{s.located}</b> com dados</span>
+          <span><b>{s.partial}</b> parciais</span>
+          <span><b>{s.awaitingValidation}</b> aguard. validação</span>
+          <span><b>{s.notStarted + s.inResearch + s.needsRequest}</b> sem dados</span>
+        </div>
       </article>)}</div>
     </section>
 
@@ -42,7 +50,7 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
       <section className="panel-card agent-summary-card">
         <div className="panel-title"><div><span className="eyebrow">Pesquisa automática</span><h3>Atividade do agente</h3></div><Bot size={21}/></div>
         <div className="agent-orbit"><div><Bot size={27}/></div><span className="pulse p1"/><span className="pulse p2"/><span className="pulse p3"/></div>
-        <div className="agent-numbers"><div><strong>{data.counts.discoveries}</strong><span>novas descobertas</span></div><div><strong>{data.lastRun?.indicatorsChecked || 0}</strong><span>analisados na última execução</span></div><div><strong>{data.lastRun?.candidatesCreated || 0}</strong><span>candidatos encontrados</span></div></div>
+        <div className="agent-numbers"><div><strong>{data.counts.discoveries}</strong><span>novas descobertas</span></div><div><strong>{data.lastRun?.indicatorsChecked || 0}</strong><span>analisados na última execução</span></div><div><strong>{data.counts.awaitingValidation}</strong><span>dados aguardando validação</span></div></div>
         <button className="primary-btn wide" onClick={() => go('findings')}>Revisar descobertas <ArrowRight size={16}/></button>
       </section>
     </div>
