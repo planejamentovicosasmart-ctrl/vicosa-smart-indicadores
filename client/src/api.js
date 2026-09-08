@@ -55,6 +55,7 @@ export const api = {
   rejectFinding: (id, reason, reviewer = 'Equipe Viçosa SMART') => request(`/findings/${id}/reject`, { method: 'POST', body: JSON.stringify({ reviewer, reason }) }),
   laterFinding: (id, reviewer = 'Equipe Viçosa SMART') => request(`/findings/${id}/later`, { method: 'POST', body: JSON.stringify({ reviewer }) }),
   validateFinding: (id, reviewer = 'Equipe Viçosa SMART') => request(`/findings/${id}/validate`, { method: 'POST', body: JSON.stringify({ reviewer }) }),
+  validateImportedValue: (indicatorId, reviewer = 'Equipe Viçosa SMART') => request(`/findings/imported/${indicatorId}/validate`, { method: 'POST', body: JSON.stringify({ reviewer }) }),
   agentStatus: () => request('/agent/status'),
   runAgent: () => request('/agent/run', { method: 'POST', body: '{}' }),
   auxiliary: (params = {}) => request(`/auxiliary?${new URLSearchParams(Object.entries(params).filter(([,v]) => v !== '' && v != null))}`),
