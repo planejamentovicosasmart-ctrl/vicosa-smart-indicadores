@@ -1,0 +1,23 @@
+{
+  "source": "Base Geterr fornecida pela equipe",
+  "reconciledAt": "2026-09-08",
+  "catalog": {
+    "37120": 127,
+    "37122": 79,
+    "37123": 63,
+    "totalIso": 269
+  },
+  "providedValuesAwaitingValidation": {
+    "37120": 63,
+    "37122": 5,
+    "37123": 16,
+    "total": 84
+  },
+  "auxiliaryIndicators": 114,
+  "rules": [
+    "Valores da Geterr entram como AWAITING_VALIDATION até conferência humana.",
+    "Descobertas do agente não alteram diretamente a base oficial.",
+    "Indicadores já validados não são rebaixados por uma nova sincronização.",
+    "O dashboard mede cobertura de dados separadamente de validação."
+  ]
+}
