@@ -4,8 +4,8 @@ import { api } from '../api.js';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 
 const statusLabels = {
-  COMPLETE:'Completo', VALIDATED:'Validado', PARTIAL:'Parcial', NOT_STARTED:'Não encontrado',
-  IN_RESEARCH:'Em pesquisa', AWAITING_VALIDATION:'Aguardando validação', NEEDS_REQUEST:'Necessita solicitação',
+  COMPLETE:'Encontrado pelo Geterr', VALIDATED:'Validado', PARTIAL:'Parcial', NOT_STARTED:'Não encontrado',
+  IN_RESEARCH:'Em pesquisa', AWAITING_VALIDATION:'Aguardando auditoria', NEEDS_REQUEST:'Necessita solicitação',
   REVIEW_NEEDED:'Revisão necessária', NOT_APPLICABLE:'Não aplicável',
 };
 
@@ -37,7 +37,7 @@ function todayStamp(){ return new Date().toISOString().slice(0,10); }
 export function ReportsView(){
   const [data,setData]=useState(null); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
   const [standard,setStandard]=useState(''); const [scope,setScope]=useState('FOUND'); const [q,setQ]=useState('');
-  const load=()=>{ setLoading(true); setError(''); api.indicators({limit:250}).then(setData).catch(e=>setError(e.message)).finally(()=>setLoading(false)); };
+  const load=()=>{ setLoading(true); setError(''); api.indicators({limit:500}).then(setData).catch(e=>setError(e.message)).finally(()=>setLoading(false)); };
   useEffect(load,[]);
 
   const items=useMemo(()=>{
@@ -47,7 +47,9 @@ export function ReportsView(){
       if(scope==='FOUND' && !hasData(i)) return false;
       if(scope==='FINAL' && !hasFinal(i)) return false;
       if(scope==='VALIDATED' && !['VALIDATED','COMPLETE'].includes(i.status)) return false;
-      if(scope==='PARTIAL' && i.status!=='PARTIAL') return false;
+      if(scope==='PARTIAL' && !['PARTIAL','REVIEW_NEEDED'].includes(i.status)) return false;
+      if(scope==='AUDIT' && i.status!=='AWAITING_VALIDATION') return false;
+      if(scope==='MISSING' && !['NOT_STARTED','NEEDS_REQUEST','IN_RESEARCH'].includes(i.status)) return false;
       if(query && ![i.code,i.name,i.currentValue?.numeratorSource,i.currentValue?.denominatorSource].some(v=>String(v||'').toLowerCase().includes(query))) return false;
       return true;
     });
@@ -84,7 +86,7 @@ export function ReportsView(){
     <section className="page-header reports-header"><div><span className="eyebrow">Compartilhamento técnico</span><h1>Relatórios</h1><p>Gere uma visão consolidada dos indicadores encontrados para encaminhar à Geterr ou acompanhar internamente.</p></div><div className="report-security"><ShieldCheck size={18}/><span><strong>Base oficial</strong><small>Descobertas pendentes não entram no relatório</small></span></div></section>
 
     <div className="report-toolbar">
-      <div className="report-filter-group"><label>Norma<select value={standard} onChange={e=>setStandard(e.target.value)}><option value="">Todas as normas</option><option value="37120">ISO 37120</option><option value="37122">ISO 37122</option><option value="37123">ISO 37123</option></select></label><label>Conteúdo<select value={scope} onChange={e=>setScope(e.target.value)}><option value="FOUND">Com dados encontrados</option><option value="FINAL">Com resultado final</option><option value="VALIDATED">Completos / validados</option><option value="PARTIAL">Somente parciais</option><option value="ALL">Todos</option></select></label><label className="report-search">Pesquisar<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Indicador, código ou fonte..."/></label></div>
+      <div className="report-filter-group"><label>Norma<select value={standard} onChange={e=>setStandard(e.target.value)}><option value="">Todas as normas</option><option value="37120">ISO 37120</option><option value="37122">ISO 37122</option><option value="37123">ISO 37123</option></select></label><label>Conteúdo<select value={scope} onChange={e=>setScope(e.target.value)}><option value="FOUND">Com dados encontrados</option><option value="FINAL">Com resultado final</option><option value="VALIDATED">Geterr / validados</option><option value="AUDIT">Candidatos para auditoria</option><option value="MISSING">Sem dados / pesquisar</option><option value="PARTIAL">Somente parciais</option><option value="ALL">Todos</option></select></label><label className="report-search">Pesquisar<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Indicador, código ou fonte..."/></label></div>
       <div className="report-actions"><button className="secondary-btn" onClick={load} disabled={loading}><RefreshCw size={15}/>Atualizar</button><button className="secondary-btn" onClick={printReport} disabled={!items.length}><Printer size={15}/>Imprimir / PDF</button><button className="primary-btn" onClick={exportCsv} disabled={!items.length}><Download size={15}/>Baixar CSV para Geterr</button></div>
     </div>
 
@@ -92,7 +94,7 @@ export function ReportsView(){
     <div className="report-summary-grid"><div><span>Indicadores no relatório</span><strong>{loading?'—':summary.total}</strong></div><div><span>Completos / validados</span><strong>{loading?'—':summary.complete}</strong></div><div><span>Parciais</span><strong>{loading?'—':summary.partial}</strong></div><div><span>Com resultado final</span><strong>{loading?'—':summary.final}</strong></div></div>
 
     <section className="report-preview"><div className="report-preview-head"><div><FileBarChart2 size={18}/><span><strong>Prévia do relatório</strong><small>{standard?`ISO ${standard}`:'Todas as normas'} • {summary.total} registro(s)</small></span></div><small>CSV usa ponto e vírgula e abre normalmente no Excel.</small></div>
-      <div className="report-table-wrap"><table className="report-table"><thead><tr><th>ISO</th><th>Código</th><th>Indicador</th><th>Status</th><th>Resultado</th><th>Ano</th><th>Fonte principal</th></tr></thead><tbody>{items.slice(0,100).map(i=>{const v=i.currentValue||{}; const year=v.numeratorYear||v.denominatorYear||''; const source=v.numeratorSource||v.denominatorSource||''; return <tr key={i.id}><td>{i.standard?.code}</td><td><b>{i.code}</b></td><td>{i.name}</td><td><StatusBadge status={i.status}/></td><td>{displayValue(v.finalRaw,v.finalNumber)||'—'} {i.unit||''}</td><td>{year||'—'}</td><td>{source||'—'}</td></tr>})}</tbody></table></div>
+      <div className="report-table-wrap"><table className="report-table"><thead><tr><th>ISO</th><th>Código</th><th>Indicador</th><th>Status</th><th>Resultado</th><th>Ano</th><th>Fonte principal</th></tr></thead><tbody>{items.slice(0,100).map(i=>{const v=i.currentValue||{}; const year=v.finalYear||v.numeratorYear||v.denominatorYear||''; const source=v.finalSource||v.numeratorSource||v.denominatorSource||''; return <tr key={i.id}><td>{i.standard?.code}</td><td><b>{i.code}</b></td><td>{i.name}</td><td><StatusBadge status={i.status}/></td><td>{displayValue(v.finalRaw,v.finalNumber)||'—'} {i.unit||''}</td><td>{year||'—'}</td><td>{source||'—'}</td></tr>})}</tbody></table></div>
       {items.length>100 && <div className="report-more">Mostrando os primeiros 100 registros na prévia. O arquivo exportado contém todos os {items.length} registros.</div>}
       {!loading && !items.length && <div className="empty-state"><FileBarChart2/><h3>Nenhum indicador para este filtro</h3><p>Altere a norma ou o conteúdo do relatório.</p></div>}
     </section>
