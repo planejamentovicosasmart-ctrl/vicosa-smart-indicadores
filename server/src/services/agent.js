@@ -108,6 +108,7 @@ async function researchWithOpenAI(indicator, value, targets, hint = null) {
   const user = `Norma: ISO ${indicator.standard.code}
 Código: ${indicator.code}
 Indicador: ${indicator.name}
+Descrição/contexto cadastrado: ${indicator.description || 'não informado'}
 Numerador necessário: ${indicator.numeratorDescription || 'não informado'}
 Denominador necessário: ${indicator.denominatorDescription || 'não informado'}
 Unidade esperada: ${indicator.unit || 'confirmar na fonte'}
