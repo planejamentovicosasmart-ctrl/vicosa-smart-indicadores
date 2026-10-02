@@ -1,4 +1,4 @@
-import { LayoutDashboard, BarChart3, Sparkles, Inbox, Database, LibraryBig, PanelLeftClose, PanelLeftOpen, FileBarChart2 } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Sparkles, Inbox, Database, LibraryBig, PanelLeftClose, PanelLeftOpen, FileBarChart2, ShieldCheck } from 'lucide-react';
 
 const nav = [
   ['dashboard', 'Visão geral', LayoutDashboard],
@@ -6,6 +6,7 @@ const nav = [
   ['auxiliary', 'Indicadores auxiliares', LibraryBig],
   ['agent', 'Agente de pesquisa', Sparkles],
   ['findings', 'Descobertas', Inbox],
+  ['validation', 'Validação ABNT', ShieldCheck],
   ['sources', 'Fontes e evidências', Database],
   ['reports', 'Relatórios', FileBarChart2],
 ];
