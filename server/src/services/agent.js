@@ -96,7 +96,7 @@ function researchTargets(indicator, value) {
 async function researchWithOpenAI(indicator, value, targets, hint = null) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
-  const model = process.env.OPENAI_MODEL || 'gpt-6-sol';
+  const model = process.env.OPENAI_MODEL || 'gpt-5.6-sol';
   const current = {
     origin: value?.origin || null,
     numerator: { value: value?.numeratorRaw, year: value?.numeratorYear, source: value?.numeratorSource },
