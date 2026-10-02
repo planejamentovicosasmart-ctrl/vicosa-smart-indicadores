@@ -141,9 +141,9 @@ const rows = (canonical.catalog || []).map((catalogRow) => {
       finalRaw: team.finalRaw || null,
       finalNumber: team.finalNumber ?? null,
       finalYear: sameYear,
-      finalSource: team.finalRaw ? 'Viçosa SMART — cálculo candidato' : null,
+      finalSource: null,
       origin: 'VICOSA_SMART',
-      sourceLabel: 'Viçosa SMART — candidato para auditoria',
+      sourceLabel: 'Levantamento Viçosa SMART — candidato',
       status: team.status || 'AWAITING_VALIDATION',
       notes: [
         'Levantamento realizado pela equipe Viçosa SMART. O dado ainda precisa ser auditado antes de ser tratado como evidência para certificação ABNT.',
