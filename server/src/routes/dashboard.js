@@ -22,13 +22,16 @@ dashboardRouter.get('/', async (_req, res, next) => {
       const counts = s.indicators.reduce((acc, i) => ((acc[i.status] = (acc[i.status] || 0) + 1), acc), {});
       const complete = counts.COMPLETE || 0;
       const validated = counts.VALIDATED || 0;
-      const partial = counts.PARTIAL || 0;
-      const awaitingValidation = counts.AWAITING_VALIDATION || 0;
       const reviewNeeded = counts.REVIEW_NEEDED || 0;
+      const partial = (counts.PARTIAL || 0) + reviewNeeded;
+      const awaitingValidation = counts.AWAITING_VALIDATION || 0;
       const needsRequest = counts.NEEDS_REQUEST || 0;
       const inResearch = counts.IN_RESEARCH || 0;
       const notStarted = counts.NOT_STARTED || 0;
-      const located = complete + validated + partial + awaitingValidation + reviewNeeded;
+      const notApplicable = counts.NOT_APPLICABLE || 0;
+      const ready = complete + validated;
+      const missing = notStarted + inResearch + needsRequest;
+      const located = ready + partial + awaitingValidation;
       return {
         id: s.id,
         code: s.code,
@@ -36,6 +39,7 @@ dashboardRouter.get('/', async (_req, res, next) => {
         subtitle: s.subtitle,
         description: s.description,
         total: s.indicators.length,
+        ready,
         complete,
         validated,
         partial,
@@ -44,13 +48,15 @@ dashboardRouter.get('/', async (_req, res, next) => {
         needsRequest,
         inResearch,
         notStarted,
+        notApplicable,
+        missing,
         located,
         progress: s.indicators.length ? Math.round((located / s.indicators.length) * 100) : 0,
       };
     });
 
     const attention = await prisma.indicator.findMany({
-      where: { status: { in: ['PARTIAL', 'REVIEW_NEEDED', 'NEEDS_REQUEST', 'AWAITING_VALIDATION', 'NOT_STARTED'] } },
+      where: { status: { in: ['PARTIAL', 'REVIEW_NEEDED', 'NEEDS_REQUEST', 'NOT_STARTED', 'IN_RESEARCH'] } },
       include: { standard: true, values: { where: { isCurrent: true }, take: 1 } },
       orderBy: [{ priority: 'desc' }, { updatedAt: 'asc' }],
       take: 8,
@@ -59,11 +65,13 @@ dashboardRouter.get('/', async (_req, res, next) => {
     res.json({
       total,
       counts: {
-        complete: (status.COMPLETE || 0) + (status.VALIDATED || 0),
-        partial: status.PARTIAL || 0,
+        ready: (status.COMPLETE || 0) + (status.VALIDATED || 0),
+        complete: status.COMPLETE || 0,
+        validated: status.VALIDATED || 0,
+        partial: (status.PARTIAL || 0) + (status.REVIEW_NEEDED || 0),
         notFound: (status.NOT_STARTED || 0) + (status.IN_RESEARCH || 0) + (status.NEEDS_REQUEST || 0),
         awaitingValidation: status.AWAITING_VALIDATION || 0,
-        validated: status.VALIDATED || 0,
+        notApplicable: status.NOT_APPLICABLE || 0,
         needsRequest: status.NEEDS_REQUEST || 0,
         reviewNeeded: status.REVIEW_NEEDED || 0,
         discoveries: findingsNew,
