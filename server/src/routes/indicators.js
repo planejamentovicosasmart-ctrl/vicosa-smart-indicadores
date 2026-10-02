@@ -79,9 +79,11 @@ indicatorsRouter.get('/:id', async (req, res, next) => {
       yearsCompatible,
       hasNumeratorSource: Boolean(currentValue?.numeratorSource),
       hasDenominatorSource: Boolean(currentValue?.denominatorSource),
+      hasFinalSource: Boolean(currentValue?.finalSource),
       hasFormula: Boolean(currentValue?.finalFormula || item.formula),
       hasEvidence: item.evidence.length > 0,
       validationState: currentValue?.validationState || null,
+      origin: currentValue?.origin || null,
     };
     res.json({ ...item, currentValue, quality });
   } catch (error) { next(error); }
@@ -89,8 +91,52 @@ indicatorsRouter.get('/:id', async (req, res, next) => {
 
 indicatorsRouter.post('/:id/research', async (req, res, next) => {
   try {
-    const result = await runResearchBatch({ indicatorId: req.params.id, mode: 'indicator' });
+    const hint = req.body?.hint ? String(req.body.hint).slice(0, 2000) : null;
+    const result = await runResearchBatch({ indicatorId: req.params.id, mode: 'all', hint });
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+indicatorsRouter.post('/:id/approve-current', async (req, res, next) => {
+  const reviewer = req.body?.reviewer || 'Equipe Viçosa SMART';
+  try {
+    const item = await prisma.indicator.findUnique({
+      where: { id: req.params.id },
+      include: { values: { where: { isCurrent: true }, take: 1, orderBy: { createdAt: 'desc' } } },
+    });
+    if (!item) return res.status(404).json({ error: 'Indicador não encontrado' });
+    const current = item.values[0];
+    if (!current) return res.status(400).json({ error: 'Não há candidato atual para aprovar' });
+    await prisma.$transaction([
+      prisma.indicatorValue.update({
+        where: { id: current.id },
+        data: { validationState: 'VALIDATED', validatedAt: new Date(), validatedBy: reviewer },
+      }),
+      prisma.indicator.update({ where: { id: item.id }, data: { status: 'VALIDATED', nextSearchAt: null } }),
+      prisma.indicatorHistory.create({
+        data: { indicatorId: item.id, action: 'CURRENT_VALUE_VALIDATED', actor: reviewer, details: { valueId: current.id, origin: current.origin || null } },
+      }),
+    ]);
+    res.json({ ok: true, status: 'VALIDATED' });
+  } catch (error) { next(error); }
+});
+
+indicatorsRouter.post('/:id/reject-current', async (req, res, next) => {
+  const reviewer = req.body?.reviewer || 'Equipe Viçosa SMART';
+  const reason = String(req.body?.reason || 'Candidato descartado durante auditoria');
+  try {
+    const item = await prisma.indicator.findUnique({
+      where: { id: req.params.id },
+      include: { values: { where: { isCurrent: true }, take: 1, orderBy: { createdAt: 'desc' } } },
+    });
+    if (!item) return res.status(404).json({ error: 'Indicador não encontrado' });
+    const current = item.values[0];
+    if (current) await prisma.indicatorValue.update({ where: { id: current.id }, data: { isCurrent: false, validationState: 'SUPERSEDED' } });
+    await prisma.indicator.update({ where: { id: item.id }, data: { status: 'NOT_STARTED', nextSearchAt: null, priority: 100 } });
+    await prisma.indicatorHistory.create({
+      data: { indicatorId: item.id, action: 'CURRENT_VALUE_REJECTED', actor: reviewer, details: { valueId: current?.id || null, reason } },
+    });
+    res.json({ ok: true, status: 'NOT_STARTED' });
   } catch (error) { next(error); }
 });
 
