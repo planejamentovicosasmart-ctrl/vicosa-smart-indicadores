@@ -109,9 +109,13 @@ model IndicatorValue {
   denominatorSourceUrl String?
   finalRaw           String?
   finalNumber        Float?
+  finalYear          String?
+  finalSource        String?
+  finalSourceUrl     String?
   finalFormula       String?
   numeratorFormula   String?
   denominatorFormula String?
+  origin             String?
   validatedAt        DateTime?
   validatedBy        String?
   sourceLabel        String?
