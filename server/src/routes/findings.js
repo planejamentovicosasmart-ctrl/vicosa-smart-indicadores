@@ -42,11 +42,9 @@ findingsRouter.get('/', async (req, res, next) => {
     const requested = req.query.status
       ? String(req.query.status).split(',').map((s) => s.trim()).filter((s) => FINDING_STATUSES.has(s))
       : null;
-    const wantsAwaiting = !requested || requested.includes('AWAITING_VALIDATION');
-
-    const agentWhere = requested?.length ? { status: { in: requested } } : {};
+    const where = requested?.length ? { status: { in: requested } } : {};
     const agentItems = await prisma.agentFinding.findMany({
-      where: agentWhere,
+      where,
       include: {
         indicator: {
           include: {
@@ -59,27 +57,7 @@ findingsRouter.get('/', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
       take: 300,
     });
-
-    let importedIndicators = [];
-    if (wantsAwaiting) {
-      importedIndicators = await prisma.indicator.findMany({
-        where: { status: 'AWAITING_VALIDATION' },
-        include: {
-          standard: true,
-          values: { where: { isCurrent: true }, take: 1, orderBy: { createdAt: 'desc' } },
-        },
-        orderBy: [{ standard: { code: 'asc' } }, { sourceRow: 'asc' }],
-        take: 300,
-      });
-    }
-
-    const agentIndicatorIds = new Set(
-      agentItems
-        .filter((f) => ['NEW','IN_REVIEW','ACCEPTED','AWAITING_VALIDATION','DIVERGENCE'].includes(f.status))
-        .map((f) => f.indicatorId)
-    );
-
-    const normalizedAgent = agentItems.map((f) => ({
+    const items = agentItems.map((f) => ({
       ...f,
       kind: 'AGENT_FINDING',
       indicator: {
@@ -88,21 +66,9 @@ findingsRouter.get('/', async (req, res, next) => {
         values: undefined,
       },
     }));
-
-    const importedItems = importedIndicators
-      .filter((i) => i.values?.[0] && !agentIndicatorIds.has(i.id))
-      .map(importedReviewItem);
-
-    const items = [...importedItems, ...normalizedAgent].sort((a, b) => {
-      const ad = new Date(a.createdAt || 0).getTime();
-      const bd = new Date(b.createdAt || 0).getTime();
-      return bd - ad;
-    });
-
     res.json({
       items,
-      importedCount: importedItems.length,
-      agentCount: normalizedAgent.length,
+      agentCount: items.length,
       requestedStatuses: requested || [],
     });
   } catch (error) {
