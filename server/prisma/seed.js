@@ -1,6 +1,6 @@
 import '../src/lib/env.js';
 import fs from 'node:fs/promises';
-import { gunzipSync, brotliDecompressSync } from 'node:zlib';
+import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
@@ -12,21 +12,7 @@ const dataDir = path.resolve(__dirname, '../../data');
 const basePartNames = ['seed.gz.b64.part1.txt','seed.gz.b64.part2.txt','seed.gz.b64.part3.txt','seed.gz.b64.part4.txt'];
 const base64 = (await Promise.all(basePartNames.map((name) => fs.readFile(path.join(dataDir, name), 'utf8')))).join('').trim();
 const baseSeed = JSON.parse(gunzipSync(Buffer.from(base64, 'base64')).toString('utf8'));
-
-const supplementPartNames = ['catalog-supplement.br.b64.part1.txt','catalog-supplement.br.b64.part2.txt'];
-let supplement = { catalogIndicators: [], missingIndicators: [], valueOverlays: [], auxiliary: baseSeed.auxiliary || [] };
-try {
-  supplement = JSON.parse(await fs.readFile(path.join(dataDir, 'catalog-supplement.json'), 'utf8'));
-  console.log('[seed] Suplemento JSON carregado:', supplement.meta?.counts || {});
-} catch (jsonError) {
-  try {
-    const supplementBase64 = (await Promise.all(supplementPartNames.map((name) => fs.readFile(path.join(dataDir, name), 'utf8')))).join('').trim();
-    supplement = JSON.parse(brotliDecompressSync(Buffer.from(supplementBase64, 'base64')).toString('utf8'));
-    console.warn('[seed] Usando suplemento comprimido legado.');
-  } catch (legacyError) {
-    console.warn('Suplemento de catálogo não encontrado; usando apenas a base detalhada original.', legacyError.message);
-  }
-}
+const canonical = JSON.parse(await fs.readFile(path.join(dataDir, 'canonical-sources.json'), 'utf8'));
 
 const standardsMeta = {
   '37120': { title: 'ISO 37120', subtitle: 'Cidades Sustentáveis', description: 'Indicadores para serviços urbanos e qualidade de vida.' },
@@ -34,59 +20,141 @@ const standardsMeta = {
   '37123': { title: 'ISO 37123', subtitle: 'Cidades Resilientes', description: 'Indicadores de resiliência urbana e preparação para riscos.' },
 };
 
-function hasValue(v) { return v !== null && v !== undefined && String(v).trim() !== ''; }
+function hasValue(v) {
+  return v !== null && v !== undefined && String(v).trim() !== '';
+}
 function normalizeYear(value) {
   if (!hasValue(value)) return null;
-  const n = Number(value);
-  if (Number.isFinite(n) && n >= 1900 && n <= 2200) return String(Math.trunc(n));
-  return String(value).trim();
+  const s = String(value).trim();
+  const m = s.match(/(19|20|21)\d{2}/);
+  return m ? m[0] : s.replace(/\.0$/, '');
 }
-function rowPresence(row) {
+function seedManaged(value) {
+  if (!value) return false;
+  const label = String(value.sourceLabel || '').toLowerCase();
+  const validator = String(value.validatedBy || '').toLowerCase();
+  return ['GETERR','VICOSA_SMART','SEED'].includes(String(value.origin || '').toUpperCase())
+    || validator.includes('base fornecida')
+    || label.includes('geterr')
+    || label.includes('catálogo consolidado')
+    || label.includes('catalogo consolidado')
+    || label.includes('importado de indicadores_abnt')
+    || label.includes('base fornecida')
+    || label.includes('viçosa smart — candidato')
+    || label.includes('vicosa smart — candidato');
+}
+function present(row) {
   const hasN = hasValue(row.numeratorRaw) || row.numeratorNumber !== null && row.numeratorNumber !== undefined;
   const hasD = hasValue(row.denominatorRaw) || row.denominatorNumber !== null && row.denominatorNumber !== undefined;
   const hasF = hasValue(row.finalRaw) || row.finalNumber !== null && row.finalNumber !== undefined;
-  return { hasN, hasD, hasF, hasAny: hasN || hasD || hasF, hasComplete: hasF || (hasN && hasD) };
+  return { hasN, hasD, hasF, any: hasN || hasD || hasF, complete: hasF || (hasN && hasD) };
 }
-function statusOf(row) {
-  const { hasN, hasD, hasF, hasComplete } = rowPresence(row);
-  if (row.status === 'NOT_APPLICABLE') return 'NOT_APPLICABLE';
-  if (row.unit === '%' && row.finalNumber != null && (row.finalNumber < 0 || row.finalNumber > 100)) return 'REVIEW_NEEDED';
-  if (normalizeYear(row.numeratorYear) && normalizeYear(row.denominatorYear) && normalizeYear(row.numeratorYear) !== normalizeYear(row.denominatorYear)) return 'REVIEW_NEEDED';
-
-  // A equipe autorizou, em 02/10/2026, tratar os dados já fornecidos nas bases
-  // de trabalho como corretos. Dados completos importados passam a ser validados;
-  // somente lacunas/parciais permanecem na fila de pesquisa.
-  if (hasComplete) return 'VALIDATED';
-  if (hasN || hasD) return 'PARTIAL';
-
-  if ((row.notes || '').toLowerCase().includes('solicitar')) return 'NEEDS_REQUEST';
-  if (row.status === 'IN_RESEARCH') return 'IN_RESEARCH';
-  return 'NOT_STARTED';
+function desiredPriority(status) {
+  if (status === 'AWAITING_VALIDATION') return 100;
+  if (status === 'PARTIAL' || status === 'REVIEW_NEEDED') return 95;
+  if (status === 'NOT_STARTED') return 90;
+  if (status === 'NEEDS_REQUEST') return 82;
+  if (status === 'IN_RESEARCH') return 78;
+  if (status === 'COMPLETE') return 25;
+  if (status === 'VALIDATED') return 10;
+  return 50;
 }
-function priorityOf(row) {
-  const status = statusOf(row);
-  if (status === 'PARTIAL') return 100;
-  if (status === 'NOT_STARTED') return 95;
-  if (status === 'REVIEW_NEEDED') return 90;
-  if (status === 'NEEDS_REQUEST') return 80;
-  if (status === 'IN_RESEARCH') return 75;
-  return 10;
+function metadataOnly(row) {
+  if (!row) return {};
+  return {
+    description: row.description || null,
+    numeratorDescription: row.numeratorDescription || null,
+    denominatorDescription: row.denominatorDescription || null,
+    unit: row.unit || null,
+    formula: row.formula || null,
+    finalFormula: row.finalFormula || null,
+    numeratorFormula: row.numeratorFormula || null,
+    denominatorFormula: row.denominatorFormula || null,
+  };
 }
 
-const mergedMap = new Map((baseSeed.indicators || []).map((row) => [`${row.standard}:${row.code}`, { ...row }]));
-const catalogRows = supplement.catalogIndicators?.length ? supplement.catalogIndicators : (supplement.missingIndicators || []);
-for (const row of catalogRows) {
-  const key = `${row.standard}:${row.code}`;
-  const detailed = mergedMap.get(key);
-  // Preserve the richer metadata from Indicadores_ABNT(1).xlsx when it exists.
-  mergedMap.set(key, detailed ? { ...row, ...detailed } : { ...row });
-}
-for (const overlay of supplement.valueOverlays || []) {
-  const key = `${overlay.standard}:${overlay.code}`;
-  const current = mergedMap.get(key);
-  if (current) mergedMap.set(key, { ...current, ...overlay });
-}
-const indicators = [...mergedMap.values()];
+const detailedMap = new Map((baseSeed.indicators || []).map((row) => [`${row.standard}:${row.code}`, row]));
+const foundMap = new Map((canonical.geterrFound || []).map((row) => [`${row.standard}:${row.code}`, row]));
+const teamMap = new Map((canonical.teamCandidates || []).map((row) => [`${row.standard}:${row.code}`, row]));
+
+const rows = (canonical.catalog || []).map((catalogRow) => {
+  const key = `${catalogRow.standard}:${catalogRow.code}`;
+  const detailed = detailedMap.get(key);
+  const found = foundMap.get(key);
+  const team = teamMap.get(key);
+  const meta = metadataOnly(detailed);
+  const base = {
+    ...catalogRow,
+    ...meta,
+    name: catalogRow.name || detailed?.name,
+    description: catalogRow.description || meta.description || null,
+    notes: null,
+    numeratorRaw: null,
+    numeratorNumber: null,
+    numeratorYear: null,
+    numeratorSource: null,
+    numeratorSourceUrl: null,
+    denominatorRaw: null,
+    denominatorNumber: null,
+    denominatorYear: null,
+    denominatorSource: null,
+    denominatorSourceUrl: null,
+    finalRaw: null,
+    finalNumber: null,
+    finalYear: null,
+    finalSource: null,
+    finalSourceUrl: null,
+    origin: null,
+    sourceLabel: catalogRow.sourceLabel || null,
+    status: catalogRow.status || 'NOT_STARTED',
+  };
+
+  if (found) {
+    Object.assign(base, {
+      finalRaw: found.finalRaw || null,
+      finalNumber: found.finalNumber ?? null,
+      finalYear: normalizeYear(found.finalYear),
+      finalSource: 'Geterr',
+      origin: 'GETERR',
+      sourceLabel: 'Geterr — encontrado',
+      status: 'COMPLETE',
+      notes: 'Indicador localizado na planilha geterr_encontrado. Somente itens pertencentes às normas ABNT NBR ISO 37120, 37122 e 37123 são importados.',
+    });
+  }
+
+  if (team) {
+    const sameYear = normalizeYear(team.numeratorYear) && normalizeYear(team.numeratorYear) === normalizeYear(team.denominatorYear)
+      ? normalizeYear(team.numeratorYear) : null;
+    Object.assign(base, {
+      numeratorDescription: team.numeratorDescription || base.numeratorDescription,
+      denominatorDescription: team.denominatorDescription || base.denominatorDescription,
+      numeratorRaw: team.numeratorRaw || null,
+      numeratorNumber: team.numeratorNumber ?? null,
+      numeratorYear: normalizeYear(team.numeratorYear),
+      numeratorSource: team.numeratorSource || null,
+      numeratorSourceUrl: /^https?:\/\//i.test(String(team.numeratorSource || '').trim()) ? String(team.numeratorSource).trim() : null,
+      denominatorRaw: team.denominatorRaw || null,
+      denominatorNumber: team.denominatorNumber ?? null,
+      denominatorYear: normalizeYear(team.denominatorYear),
+      denominatorSource: team.denominatorSource || null,
+      denominatorSourceUrl: /^https?:\/\//i.test(String(team.denominatorSource || '').trim()) ? String(team.denominatorSource).trim() : null,
+      finalRaw: team.finalRaw || null,
+      finalNumber: team.finalNumber ?? null,
+      finalYear: sameYear,
+      finalSource: team.finalRaw ? 'Viçosa SMART — cálculo candidato' : null,
+      origin: 'VICOSA_SMART',
+      sourceLabel: 'Viçosa SMART — candidato para auditoria',
+      status: team.status || 'AWAITING_VALIDATION',
+      notes: [
+        'Levantamento realizado pela equipe Viçosa SMART. O dado ainda precisa ser auditado antes de ser tratado como evidência para certificação ABNT.',
+        team.notes || null,
+      ].filter(Boolean).join(' '),
+    });
+  }
+  return base;
+});
+
+if (rows.length !== 269) throw new Error(`Catálogo canônico inválido: esperado 269, recebido ${rows.length}`);
 
 const standardByCode = {};
 for (const code of Object.keys(standardsMeta)) {
@@ -94,101 +162,123 @@ for (const code of Object.keys(standardsMeta)) {
   standardByCode[code] = await prisma.standard.upsert({ where: { code }, update: meta, create: { code, ...meta } });
 }
 
-const indicatorKeyToId = new Map();
+const canonicalIds = [];
 let imported = 0;
-for (const row of indicators) {
+for (const row of rows) {
   const standard = standardByCode[row.standard];
   if (!standard || !row.code || !row.name) continue;
-  const desiredStatus = statusOf(row);
-  const existing = await prisma.indicator.findUnique({ where: { standardId_code: { standardId: standard.id, code: row.code } } });
+
+  const existing = await prisma.indicator.findUnique({
+    where: { standardId_code: { standardId: standard.id, code: row.code } },
+    include: { values: { where: { isCurrent: true }, orderBy: { createdAt: 'desc' }, take: 1 } },
+  });
+  const current = existing?.values?.[0] || null;
+  const preserveHumanValidated = Boolean(current && current.validationState === 'VALIDATED' && !seedManaged(current));
+  const status = preserveHumanValidated ? 'VALIDATED' : row.status;
+
   const indicator = await prisma.indicator.upsert({
     where: { standardId_code: { standardId: standard.id, code: row.code } },
     update: {
       name: row.name,
+      description: row.description || undefined,
       numeratorDescription: row.numeratorDescription || undefined,
       denominatorDescription: row.denominatorDescription || undefined,
       unit: row.unit || undefined,
+      formula: row.formula || undefined,
       notes: row.notes || undefined,
       sourceRow: row.sourceRow || undefined,
-      priority: priorityOf(row),
-      ...(existing?.status === 'VALIDATED' ? {} : { status: desiredStatus }),
+      priority: desiredPriority(status),
+      status,
     },
     create: {
       standardId: standard.id,
       code: row.code,
       name: row.name,
+      description: row.description || null,
       numeratorDescription: row.numeratorDescription || null,
       denominatorDescription: row.denominatorDescription || null,
       unit: row.unit || null,
+      formula: row.formula || null,
       notes: row.notes || null,
-      status: desiredStatus,
+      status,
       sourceRow: row.sourceRow || null,
-      priority: priorityOf(row),
+      priority: desiredPriority(status),
     },
   });
-  indicatorKeyToId.set(`${row.standard}:${row.code}`, indicator.id);
+  canonicalIds.push(indicator.id);
 
-  const current = await prisma.indicatorValue.findFirst({ where: { indicatorId: indicator.id, isCurrent: true }, orderBy: { createdAt: 'desc' } });
-  const valueData = {
-    numeratorRaw: row.numeratorRaw || null,
-    numeratorNumber: row.numeratorNumber ?? null,
-    numeratorYear: normalizeYear(row.numeratorYear),
-    numeratorSource: row.numeratorSource || null,
-    denominatorRaw: row.denominatorRaw || null,
-    denominatorNumber: row.denominatorNumber ?? null,
-    denominatorYear: normalizeYear(row.denominatorYear),
-    denominatorSource: row.denominatorSource || null,
-    finalRaw: row.finalRaw || null,
-    finalNumber: row.finalNumber ?? null,
-    finalFormula: row.finalFormula || null,
-    numeratorFormula: row.numeratorFormula || null,
-    denominatorFormula: row.denominatorFormula || null,
-    sourceLabel: row.sourceLabel || (row.sourceRow && row.sourceRow <= 30 ? 'Importado de Indicadores_ABNT(1).xlsx' : 'Catálogo consolidado das bases fornecidas'),
-  };
-  const presence = rowPresence(row);
-  const hasAnyValue = presence.hasAny;
-  const trustedImported = desiredStatus === 'VALIDATED';
-  const validationData = trustedImported ? {
-    validationState: 'VALIDATED',
-    validatedAt: new Date(),
-    validatedBy: 'Equipe Viçosa SMART · base fornecida',
-  } : {};
-
-  if (hasAnyValue && !current) {
-    await prisma.indicatorValue.create({ data: { indicatorId: indicator.id, ...valueData, ...validationData } });
-  } else if (hasAnyValue && current && current.validationState !== 'VALIDATED') {
-    await prisma.indicatorValue.update({ where: { id: current.id }, data: { ...valueData, ...validationData } });
+  if (!preserveHumanValidated) {
+    const p = present(row);
+    if (p.any) {
+      const valueData = {
+        numeratorRaw: row.numeratorRaw || null,
+        numeratorNumber: row.numeratorNumber ?? null,
+        numeratorYear: normalizeYear(row.numeratorYear),
+        numeratorSource: row.numeratorSource || null,
+        numeratorSourceUrl: row.numeratorSourceUrl || null,
+        denominatorRaw: row.denominatorRaw || null,
+        denominatorNumber: row.denominatorNumber ?? null,
+        denominatorYear: normalizeYear(row.denominatorYear),
+        denominatorSource: row.denominatorSource || null,
+        denominatorSourceUrl: row.denominatorSourceUrl || null,
+        finalRaw: row.finalRaw || null,
+        finalNumber: row.finalNumber ?? null,
+        finalYear: normalizeYear(row.finalYear),
+        finalSource: row.finalSource || null,
+        finalSourceUrl: row.finalSourceUrl || null,
+        finalFormula: row.finalFormula || null,
+        numeratorFormula: row.numeratorFormula || null,
+        denominatorFormula: row.denominatorFormula || null,
+        origin: row.origin || 'SEED',
+        sourceLabel: row.sourceLabel || null,
+        validationState: 'IMPORTED',
+        validatedAt: null,
+        validatedBy: null,
+        isCurrent: true,
+      };
+      if (current && seedManaged(current)) {
+        await prisma.indicatorValue.update({ where: { id: current.id }, data: valueData });
+      } else if (!current) {
+        await prisma.indicatorValue.create({ data: { indicatorId: indicator.id, ...valueData } });
+      } else {
+        await prisma.indicatorValue.update({ where: { id: current.id }, data: { isCurrent: false, validationState: 'SUPERSEDED' } });
+        await prisma.indicatorValue.create({ data: { indicatorId: indicator.id, ...valueData } });
+      }
+    } else if (current && seedManaged(current)) {
+      await prisma.indicatorValue.update({
+        where: { id: current.id },
+        data: { isCurrent: false, validationState: 'SUPERSEDED' },
+      });
+    }
   }
 
-  const priorSync = await prisma.indicatorHistory.findFirst({ where: { indicatorId: indicator.id, action: 'SEED_SYNC' } });
-  if (!priorSync) await prisma.indicatorHistory.create({ data: { indicatorId: indicator.id, action: 'SEED_SYNC', actor: 'Sistema', details: { source: row.sourceLabel || 'Bases fornecidas', row: row.sourceRow || null } } });
+  const priorSync = await prisma.indicatorHistory.findFirst({ where: { indicatorId: indicator.id, action: 'CANONICAL_V2_SYNC' } });
+  if (!priorSync) {
+    await prisma.indicatorHistory.create({
+      data: {
+        indicatorId: indicator.id,
+        action: 'CANONICAL_V2_SYNC',
+        actor: 'Sistema',
+        details: { source: row.sourceLabel || 'Catálogo canônico', version: canonical.meta?.version || null },
+      },
+    });
+  }
   imported++;
 }
 
-await prisma.auxiliaryIndicator.deleteMany();
-for (const row of supplement.auxiliary || []) {
-  let relatedIndicatorId = null;
-  for (const rel of row.related || []) {
-    const candidate = indicatorKeyToId.get(`${rel.standard}:${rel.code}`);
-    if (candidate) { relatedIndicatorId = candidate; break; }
-  }
-  await prisma.auxiliaryIndicator.create({ data: {
-    code: row.code || null,
-    name: row.name,
-    category: row.category || 'Outros',
-    available: row.available ?? null,
-    valueRaw: row.valueRaw || null,
-    valueNumber: row.valueNumber ?? null,
-    referenceDate: row.referenceDate || null,
-    sourceLabel: 'Base auxiliar fornecida',
-    sourceRow: row.sourceRow || null,
-    relatedIndicatorId,
-  } });
-}
+// A base oficial deve conter somente os 269 indicadores pertencentes às três normas.
+await prisma.indicator.deleteMany({ where: { id: { notIn: canonicalIds } } });
 
-const counts = indicators.reduce((acc, row) => ((acc[row.standard] = (acc[row.standard] || 0) + 1), acc), {});
+// A guia "Indicadores auxiliares" agora é derivada dos numeradores/denominadores
+// dos próprios indicadores, sem importar os indicadores genéricos da Geterr.
+await prisma.auxiliaryIndicator.deleteMany();
+
 const statusGroups = await prisma.indicator.groupBy({ by: ['status'], _count: { _all: true } });
 const statusSummary = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
-console.log(`Seed concluído: ${imported} indicadores ABNT/ISO — 37120=${counts['37120'] || 0}, 37122=${counts['37122'] || 0}, 37123=${counts['37123'] || 0}; ${supplement.auxiliary?.length || 0} auxiliares.`);
-console.log('[seed] Status após sincronização:', statusSummary);
+const originGroups = await prisma.indicatorValue.groupBy({ by: ['origin'], where: { isCurrent: true }, _count: { _all: true } });
+const originSummary = Object.fromEntries(originGroups.map((g) => [g.origin || 'SEM_ORIGEM', g._count._all]));
+console.log('[seed] Catálogo canônico:', canonical.meta?.counts || {});
+console.log(`Seed concluído: ${imported} indicadores ABNT/ISO; auxiliares dinâmicos por numerador/denominador.`);
+console.log('[seed] Status:', statusSummary);
+console.log('[seed] Origens atuais:', originSummary);
 await prisma.$disconnect();
