@@ -13,7 +13,9 @@ function originLabel(value){
   return value?.sourceLabel||'Não informado';
 }
 function sourceName(value){
-  return value?.finalSource||value?.numeratorSource||value?.denominatorSource||value?.sourceLabel||null;
+  const external = value?.finalSource || value?.numeratorSource || value?.denominatorSource || null;
+  if (external) return external;
+  return null;
 }
 function sourceUrl(value){
   return value?.finalSourceUrl||value?.numeratorSourceUrl||value?.denominatorSourceUrl||null;
@@ -73,6 +75,7 @@ validationRouter.get('/', async (req,res,next)=>{
         currentValue,
         foundAt:originLabel(currentValue),
         sourceName:sourceName(currentValue),
+        sourceProven: Boolean(sourceName(currentValue)),
         sourceUrl:sourceUrl(currentValue),
         audit,
       };
