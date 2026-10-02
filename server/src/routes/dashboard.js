@@ -29,7 +29,9 @@ dashboardRouter.get('/', async (_req, res, next) => {
       const inResearch = counts.IN_RESEARCH || 0;
       const notStarted = counts.NOT_STARTED || 0;
       const notApplicable = counts.NOT_APPLICABLE || 0;
-      const ready = complete + validated;
+      const geterrFound = complete;
+      const audited = validated;
+      const ready = geterrFound + audited;
       const missing = notStarted + inResearch + needsRequest;
       const located = ready + partial + awaitingValidation;
       return {
@@ -40,6 +42,8 @@ dashboardRouter.get('/', async (_req, res, next) => {
         description: s.description,
         total: s.indicators.length,
         ready,
+        geterrFound,
+        audited,
         complete,
         validated,
         partial,
@@ -56,7 +60,7 @@ dashboardRouter.get('/', async (_req, res, next) => {
     });
 
     const attention = await prisma.indicator.findMany({
-      where: { status: { in: ['PARTIAL', 'REVIEW_NEEDED', 'NEEDS_REQUEST', 'NOT_STARTED', 'IN_RESEARCH'] } },
+      where: { status: { in: ['AWAITING_VALIDATION', 'PARTIAL', 'REVIEW_NEEDED', 'NEEDS_REQUEST', 'NOT_STARTED', 'IN_RESEARCH'] } },
       include: { standard: true, values: { where: { isCurrent: true }, take: 1 } },
       orderBy: [{ priority: 'desc' }, { updatedAt: 'asc' }],
       take: 8,
@@ -66,6 +70,8 @@ dashboardRouter.get('/', async (_req, res, next) => {
       total,
       counts: {
         ready: (status.COMPLETE || 0) + (status.VALIDATED || 0),
+        geterrFound: status.COMPLETE || 0,
+        audited: status.VALIDATED || 0,
         complete: status.COMPLETE || 0,
         validated: status.VALIDATED || 0,
         partial: (status.PARTIAL || 0) + (status.REVIEW_NEEDED || 0),
