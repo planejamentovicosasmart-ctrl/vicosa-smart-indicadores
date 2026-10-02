@@ -35,28 +35,36 @@ function normalizeYear(value) {
   if (Number.isFinite(n) && n >= 1900 && n <= 2200) return String(Math.trunc(n));
   return String(value).trim();
 }
-function statusOf(row) {
-  if (row.status && ['NOT_STARTED','IN_RESEARCH','PARTIAL','COMPLETE','AWAITING_VALIDATION','VALIDATED','NEEDS_REQUEST','NOT_APPLICABLE','REVIEW_NEEDED'].includes(row.status)) return row.status;
+function rowPresence(row) {
   const hasN = hasValue(row.numeratorRaw) || row.numeratorNumber !== null && row.numeratorNumber !== undefined;
   const hasD = hasValue(row.denominatorRaw) || row.denominatorNumber !== null && row.denominatorNumber !== undefined;
   const hasF = hasValue(row.finalRaw) || row.finalNumber !== null && row.finalNumber !== undefined;
+  return { hasN, hasD, hasF, hasAny: hasN || hasD || hasF, hasComplete: hasF || (hasN && hasD) };
+}
+function statusOf(row) {
+  const { hasN, hasD, hasF, hasComplete } = rowPresence(row);
+  if (row.status === 'NOT_APPLICABLE') return 'NOT_APPLICABLE';
   if (row.unit === '%' && row.finalNumber != null && (row.finalNumber < 0 || row.finalNumber > 100)) return 'REVIEW_NEEDED';
   if (normalizeYear(row.numeratorYear) && normalizeYear(row.denominatorYear) && normalizeYear(row.numeratorYear) !== normalizeYear(row.denominatorYear)) return 'REVIEW_NEEDED';
-  if (!hasN && !hasD && (row.notes || '').toLowerCase().includes('solicitar')) return 'NEEDS_REQUEST';
-  if (hasF || (hasN && hasD)) return 'COMPLETE';
+
+  // A equipe autorizou, em 02/10/2026, tratar os dados já fornecidos nas bases
+  // de trabalho como corretos. Dados completos importados passam a ser validados;
+  // somente lacunas/parciais permanecem na fila de pesquisa.
+  if (hasComplete) return 'VALIDATED';
   if (hasN || hasD) return 'PARTIAL';
+
+  if ((row.notes || '').toLowerCase().includes('solicitar')) return 'NEEDS_REQUEST';
+  if (row.status === 'IN_RESEARCH') return 'IN_RESEARCH';
   return 'NOT_STARTED';
 }
 function priorityOf(row) {
-  const hasN = hasValue(row.numeratorRaw) || row.numeratorNumber !== null && row.numeratorNumber !== undefined;
-  const hasD = hasValue(row.denominatorRaw) || row.denominatorNumber !== null && row.denominatorNumber !== undefined;
-  let score = 50;
-  if (hasN !== hasD) score += 30;
-  if (row.notes) score += 10;
-  if ((row.notes || '').toLowerCase().includes('solicitar')) score -= 8;
-  if (!hasN && !hasD) score -= 10;
-  if (row.status === 'AWAITING_VALIDATION') score += 20;
-  return Math.max(1, Math.min(100, score));
+  const status = statusOf(row);
+  if (status === 'PARTIAL') return 100;
+  if (status === 'NOT_STARTED') return 95;
+  if (status === 'REVIEW_NEEDED') return 90;
+  if (status === 'NEEDS_REQUEST') return 80;
+  if (status === 'IN_RESEARCH') return 75;
+  return 10;
 }
 
 const mergedMap = new Map((baseSeed.indicators || []).map((row) => [`${row.standard}:${row.code}`, { ...row }]));
@@ -125,9 +133,20 @@ for (const row of indicators) {
     denominatorFormula: row.denominatorFormula || null,
     sourceLabel: row.sourceLabel || (row.sourceRow && row.sourceRow <= 30 ? 'Importado de Indicadores_ABNT(1).xlsx' : 'Catálogo consolidado das bases fornecidas'),
   };
-  const hasAnyValue = Object.entries(valueData).some(([k,v]) => !['sourceLabel'].includes(k) && hasValue(v));
-  if (hasAnyValue && !current) await prisma.indicatorValue.create({ data: { indicatorId: indicator.id, ...valueData } });
-  else if (hasAnyValue && current && current.validationState !== 'VALIDATED') await prisma.indicatorValue.update({ where: { id: current.id }, data: valueData });
+  const presence = rowPresence(row);
+  const hasAnyValue = presence.hasAny;
+  const trustedImported = desiredStatus === 'VALIDATED';
+  const validationData = trustedImported ? {
+    validationState: 'VALIDATED',
+    validatedAt: new Date(),
+    validatedBy: 'Equipe Viçosa SMART · base fornecida',
+  } : {};
+
+  if (hasAnyValue && !current) {
+    await prisma.indicatorValue.create({ data: { indicatorId: indicator.id, ...valueData, ...validationData } });
+  } else if (hasAnyValue && current && current.validationState !== 'VALIDATED') {
+    await prisma.indicatorValue.update({ where: { id: current.id }, data: { ...valueData, ...validationData } });
+  }
 
   const priorSync = await prisma.indicatorHistory.findFirst({ where: { indicatorId: indicator.id, action: 'SEED_SYNC' } });
   if (!priorSync) await prisma.indicatorHistory.create({ data: { indicatorId: indicator.id, action: 'SEED_SYNC', actor: 'Sistema', details: { source: row.sourceLabel || 'Bases fornecidas', row: row.sourceRow || null } } });
