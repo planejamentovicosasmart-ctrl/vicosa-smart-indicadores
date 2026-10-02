@@ -20,7 +20,10 @@ indicatorsRouter.get('/', async (req, res, next) => {
     const skip = (Math.max(1, Number(page) || 1) - 1) * take;
     const where = {
       ...(standard ? { standard: { code: String(standard) } } : {}),
-      ...(status ? { status: String(status) } : {}),
+      ...(status ? (() => {
+        const statuses = String(status).split(',').map((s) => s.trim()).filter(Boolean);
+        return statuses.length > 1 ? { status: { in: statuses } } : { status: statuses[0] };
+      })() : {}),
       ...(q ? { OR: [
         { name: { contains: String(q), mode: 'insensitive' } },
         { code: { contains: String(q), mode: 'insensitive' } },
