@@ -14,12 +14,18 @@ const base64 = (await Promise.all(basePartNames.map((name) => fs.readFile(path.j
 const baseSeed = JSON.parse(gunzipSync(Buffer.from(base64, 'base64')).toString('utf8'));
 
 const supplementPartNames = ['catalog-supplement.br.b64.part1.txt','catalog-supplement.br.b64.part2.txt'];
-let supplement = { missingIndicators: [], valueOverlays: [], auxiliary: baseSeed.auxiliary || [] };
+let supplement = { catalogIndicators: [], missingIndicators: [], valueOverlays: [], auxiliary: baseSeed.auxiliary || [] };
 try {
-  const supplementBase64 = (await Promise.all(supplementPartNames.map((name) => fs.readFile(path.join(dataDir, name), 'utf8')))).join('').trim();
-  supplement = JSON.parse(brotliDecompressSync(Buffer.from(supplementBase64, 'base64')).toString('utf8'));
-} catch (error) {
-  console.warn('Suplemento de catálogo não encontrado; usando apenas a base detalhada original.', error.message);
+  supplement = JSON.parse(await fs.readFile(path.join(dataDir, 'catalog-supplement.json'), 'utf8'));
+  console.log('[seed] Suplemento JSON carregado:', supplement.meta?.counts || {});
+} catch (jsonError) {
+  try {
+    const supplementBase64 = (await Promise.all(supplementPartNames.map((name) => fs.readFile(path.join(dataDir, name), 'utf8')))).join('').trim();
+    supplement = JSON.parse(brotliDecompressSync(Buffer.from(supplementBase64, 'base64')).toString('utf8'));
+    console.warn('[seed] Usando suplemento comprimido legado.');
+  } catch (legacyError) {
+    console.warn('Suplemento de catálogo não encontrado; usando apenas a base detalhada original.', legacyError.message);
+  }
 }
 
 const standardsMeta = {
@@ -68,7 +74,13 @@ function priorityOf(row) {
 }
 
 const mergedMap = new Map((baseSeed.indicators || []).map((row) => [`${row.standard}:${row.code}`, { ...row }]));
-for (const row of supplement.missingIndicators || []) mergedMap.set(`${row.standard}:${row.code}`, { ...row });
+const catalogRows = supplement.catalogIndicators?.length ? supplement.catalogIndicators : (supplement.missingIndicators || []);
+for (const row of catalogRows) {
+  const key = `${row.standard}:${row.code}`;
+  const detailed = mergedMap.get(key);
+  // Preserve the richer metadata from Indicadores_ABNT(1).xlsx when it exists.
+  mergedMap.set(key, detailed ? { ...row, ...detailed } : { ...row });
+}
 for (const overlay of supplement.valueOverlays || []) {
   const key = `${overlay.standard}:${overlay.code}`;
   const current = mergedMap.get(key);
