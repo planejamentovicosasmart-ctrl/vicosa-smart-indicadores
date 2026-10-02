@@ -1,12 +1,48 @@
 # Central de Indicadores — Viçosa SMART
 
-Sistema web para gestão, pesquisa, validação e geração de relatórios dos indicadores municipais das ABNT NBR ISO 37120, ISO 37122 e ISO 37123.
+Sistema web para gestão, pesquisa, auditoria e geração de relatórios dos indicadores municipais das ABNT NBR ISO 37120, ISO 37122 e ISO 37123.
 
-## Base inicial
+## Base canônica
 
-- 129 indicadores ABNT importados da base de trabalho.
-- 386 registros de indicadores auxiliares.
-- Dados oficiais e descobertas do agente ficam em camadas separadas.
+A base oficial do sistema é formada somente por indicadores pertencentes às três normas:
+
+- ISO 37120: **127 indicadores**
+- ISO 37122: **79 indicadores**
+- ISO 37123: **63 indicadores**
+- Total: **269 indicadores**
+
+Fontes de entrada reconciliadas em 02/10/2026:
+
+- `37120.csv`, `37122.csv` e `37123.csv`: indicadores que a Geterr **não encontrou**;
+- `geterr_encontrado.csv`: indicadores encontrados pela Geterr, filtrados para manter somente itens pertencentes às normas;
+- `Indicadores_ABNT - 37120.csv`: levantamentos feitos pelo Viçosa SMART, tratados como **candidatos para auditoria**, não como dados automaticamente validados.
+
+Resumo da reconciliação:
+
+- Geterr encontrou **81 indicadores das normas**;
+- Geterr não encontrou **188**;
+- o Viçosa SMART trabalhou 22 indicadores da ISO 37120: 14 candidatos completos para auditoria, 6 parciais e 2 ainda sem dado.
+
+A fonte estruturada atual fica em `data/canonical-sources.json`.
+
+## Indicadores auxiliares
+
+A guia **Indicadores auxiliares** não importa mais indicadores genéricos da Geterr.
+
+Ela é gerada dinamicamente a partir dos **numeradores e denominadores dos próprios indicadores ABNT**. Componentes com o mesmo texto aparecem uma única vez e mostram todos os indicadores em que são utilizados.
+
+## Agente de pesquisa e auditoria
+
+O agente trabalha em dois fluxos:
+
+1. **Pesquisar lacunas** — indicadores sem dados ou parciais;
+2. **Auditar candidatos** — dados levantados pelo Viçosa SMART que ainda precisam de conferência.
+
+Dentro de cada indicador também existe um **Copiloto de pesquisa**. O usuário pode informar uma pista, URL, órgão ou observação e pedir ao agente para pesquisar/auditar aquele indicador especificamente.
+
+O agente nunca homologa um dado automaticamente:
+
+`Pesquisa/Auditoria → Descoberta/Evidência → Revisão humana → Aprovação ou rejeição → Base validada`
 
 ## Áreas do sistema
 
@@ -14,26 +50,13 @@ Sistema web para gestão, pesquisa, validação e geração de relatórios dos i
 - Indicadores ABNT
 - Indicadores Auxiliares
 - Agente de Pesquisa
-- Descobertas do Agente
+- Descobertas
 - Fontes e Evidências
 - Relatórios
 
-## Segurança do agente
+## Relatórios
 
-O agente atua como pesquisador e nunca altera diretamente a base oficial.
-
-`Pesquisa → Descoberta → Revisão humana → Aguardando validação → Validação → Base oficial`
-
-Descobertas ainda não validadas não entram nos relatórios oficiais.
-
-## Relatórios / Geterr
-
-A guia **Relatórios** permite filtrar os indicadores por norma e situação e gerar:
-
-- CSV compatível com Excel, contendo código, indicador, numerador, denominador, anos, fontes, URLs, resultado, unidade e observações;
-- versão para impressão ou salvamento em PDF.
-
-Consulte `RELATORIOS.md` para detalhes.
+A guia **Relatórios** consulta os 269 indicadores e permite exportar CSV ou imprimir/salvar em PDF, com código, indicador, status, numerador, denominador, anos, fontes, URLs e resultado.
 
 ## Tecnologias
 
@@ -43,9 +66,11 @@ Consulte `RELATORIOS.md` para detalhes.
 - OpenAI Responses API com pesquisa web
 - Tavily como fallback opcional
 - Neon para PostgreSQL
-- Render para hospedagem e execução diária do agente
+- Render para hospedagem
 
-## Testar somente a interface
+## Rodar localmente
+
+Para testar somente a interface:
 
 ```bash
 cd client
@@ -53,19 +78,7 @@ npm install
 npm run dev
 ```
 
-Abra `http://localhost:5173/?demo=1`.
-
-O modo demonstração funciona sem banco de dados e utiliza a base inicial compactada do projeto.
-
-## Rodar o sistema completo
-
-No Windows, a forma mais simples é:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\CONFIGURAR_WINDOWS.ps1
-```
-
-Ou configure manualmente `server/.env` a partir de `server/.env.example` e execute:
+Para o sistema completo:
 
 ```bash
 npm run install:all
@@ -75,14 +88,12 @@ npm run build
 npm start
 ```
 
-Depois abra `http://localhost:3000`.
-
 ## Variáveis principais
 
 ```text
 DATABASE_URL=
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5.6-sol
+OPENAI_MODEL=gpt-6-sol
 TAVILY_API_KEY=
 AGENT_MAX_INDICATORS=8
 BASIC_AUTH_USER=vicosasmart
@@ -94,12 +105,9 @@ Nunca publique `.env`, senhas ou chaves de API no GitHub.
 ## Estrutura
 
 ```text
-client/       React + Vite
-server/       Express + Prisma + agente
-data/         base inicial compactada
-render.yaml   deploy do serviço e cron diário
+client/                    React + Vite
+server/                    Express + Prisma + agente
+data/canonical-sources.json fonte canônica reconciliada
+data/seed.gz.b64.part*.txt metadados detalhados já existentes (fórmulas/componentes)
+render.yaml                configuração de deploy
 ```
-
-A base inicial é armazenada em `seed.gz.b64.part*.txt`; o servidor e o modo demonstração reconstroem automaticamente os 129 indicadores ABNT e os 386 registros auxiliares.
-
-Consulte também `ARQUITETURA.md` para as regras de validação e auditoria do agente.
