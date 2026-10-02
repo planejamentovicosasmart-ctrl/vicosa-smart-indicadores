@@ -9,3 +9,6 @@
 @media(max-width:600px){.report-security{width:100%;min-width:0}.report-filter-group{display:grid;grid-template-columns:1fr}.report-filter-group label,.report-search{min-width:0}.report-filter-group select,.report-filter-group input{width:100%;min-width:0}.report-actions{display:grid;grid-template-columns:1fr}.report-actions button{width:100%}.report-summary-grid{grid-template-columns:1fr 1fr}.report-preview-head{align-items:flex-start;flex-direction:column}.nav-list{grid-template-columns:repeat(7,1fr)}}
 
 .standard-stats-expanded{display:flex!important;flex-wrap:wrap;gap:8px 14px!important;align-items:center}.standard-stats-expanded span{white-space:nowrap}.standard-stats-expanded span:nth-child(4){color:#7150a8}.imported-chip{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#5c4779;background:#f1ebf8;border:1px solid #ded0ef;padding:4px 7px;border-radius:20px}
+
+/* Fluxo de pesquisa/auditoria e componentes deduplicados */
+.component-relations{display:flex;gap:5px;flex-wrap:wrap;align-items:center}.component-relations .relation-chip{border:0;cursor:pointer}.component-value{display:flex;flex-direction:column;margin-bottom:4px}.component-value b{font-size:10px}.component-value small{font-size:8px;color:#8d99a7;margin-top:2px}
