@@ -79,13 +79,13 @@ function normalizeFinding(raw, targetFallback) {
 }
 
 function researchTargets(indicator, value) {
+  const auditMode = indicator.status === 'AWAITING_VALIDATION' || value?.origin === 'VICOSA_SMART';
+  if (auditMode) return ['AUDIT'];
+
   const targets = [];
   const hasN = Boolean(value?.numeratorRaw || value?.numeratorNumber !== null && value?.numeratorNumber !== undefined);
   const hasD = Boolean(value?.denominatorRaw || value?.denominatorNumber !== null && value?.denominatorNumber !== undefined);
   const hasF = Boolean(value?.finalRaw || value?.finalNumber !== null && value?.finalNumber !== undefined);
-
-  // Primeiro tente localizar o resultado final já publicado por uma fonte oficial.
-  // Se não houver, procure os componentes necessários para calcular o indicador.
   if (!hasF) targets.push('FINAL');
   if (!hasN && indicator.numeratorDescription) targets.push('NUMERATOR');
   if (!hasD && indicator.denominatorDescription) targets.push('DENOMINATOR');
@@ -93,17 +93,34 @@ function researchTargets(indicator, value) {
   return targets;
 }
 
-async function researchWithOpenAI(indicator, value, targets) {
+async function researchWithOpenAI(indicator, value, targets, hint = null) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   const model = process.env.OPENAI_MODEL || 'gpt-5.6-sol';
   const current = {
+    origin: value?.origin || null,
     numerator: { value: value?.numeratorRaw, year: value?.numeratorYear, source: value?.numeratorSource },
     denominator: { value: value?.denominatorRaw, year: value?.denominatorYear, source: value?.denominatorSource },
-    final: { value: value?.finalRaw },
+    final: { value: value?.finalRaw, year: value?.finalYear, source: value?.finalSource },
   };
-  const system = `Você é um pesquisador de indicadores municipais para normas ABNT NBR ISO 37120, 37122 e 37123. Sua função é INVESTIGAR, não validar. Nunca invente valores, fontes, URLs, anos ou trechos. Use pesquisa web e priorize fontes oficiais. Se não houver dado comprovável, retorne apenas pistas de fonte ou nenhum achado. Não trate snippet de buscador como evidência final. A cidade é Viçosa/MG, Brasil. Prioridade de fontes: ${SOURCE_PRIORITY.join(' > ')}. Retorne SOMENTE JSON válido no formato {"findings":[...]}. Cada finding: targetField (NUMERATOR|DENOMINATOR|FINAL|UPDATE|SOURCE), candidateValueRaw, candidateValueNumber, unit, referenceYear, sourceName, sourceOrganization, sourceType, sourceUrl, evidenceExcerpt, evidenceDocument, evidencePage, confidenceScore, confidenceReason. confidenceScore deve refletir evidência verificável, não opinião.`;
-  const user = `Norma: ISO ${indicator.standard.code}\nCódigo: ${indicator.code}\nIndicador: ${indicator.name}\nNumerador necessário: ${indicator.numeratorDescription || 'não informado'}\nDenominador necessário: ${indicator.denominatorDescription || 'não informado'}\nUnidade esperada: ${indicator.unit || 'confirmar na fonte'}\nCampos a investigar: ${targets.join(', ')}\nDados já existentes: ${JSON.stringify(current)}\nObservações existentes: ${indicator.notes || 'nenhuma'}\n\nPesquise dados municipais de Viçosa/MG. Para cada valor candidato, exija URL exata e trecho que comprove o dado, o município e o ano. Dê preferência ao dado oficial mais recente disponível. Se a fonte publicar diretamente o resultado final do indicador, use targetField FINAL; não invente numerador/denominador. Quando o cálculo for necessário, prefira numerador e denominador do mesmo ano. Se encontrar apenas uma página que provavelmente contém o dado, crie targetField SOURCE sem inventar valor.`;
+  const auditMode = targets.includes('AUDIT');
+  const system = `Você é um copiloto de auditoria e pesquisa de indicadores municipais para ABNT NBR ISO 37120, 37122 e 37123. Sua função é INVESTIGAR e AUDITAR CANDIDATOS, nunca homologar automaticamente. Nunca invente valores, fontes, URLs, anos ou trechos. Use pesquisa web e priorize fontes oficiais. Se não houver dado comprovável, retorne apenas pistas de fonte ou nenhum achado. Não trate snippet de buscador como evidência final. A cidade é Viçosa/MG, Brasil. Prioridade de fontes: ${SOURCE_PRIORITY.join(' > ')}. Quando estiver auditando um valor do Viçosa SMART, compare explicitamente valor, ano, conceito, numerador, denominador e unidade com a evidência encontrada e descreva divergências no confidenceReason. Retorne SOMENTE JSON válido no formato {"findings":[...]}. Cada finding: targetField (AUDIT|NUMERATOR|DENOMINATOR|FINAL|UPDATE|SOURCE), candidateValueRaw, candidateValueNumber, unit, referenceYear, sourceName, sourceOrganization, sourceType, sourceUrl, evidenceExcerpt, evidenceDocument, evidencePage, confidenceScore, confidenceReason. confidenceScore deve refletir evidência verificável, não opinião.`;
+  const user = `Norma: ISO ${indicator.standard.code}
+Código: ${indicator.code}
+Indicador: ${indicator.name}
+Numerador necessário: ${indicator.numeratorDescription || 'não informado'}
+Denominador necessário: ${indicator.denominatorDescription || 'não informado'}
+Unidade esperada: ${indicator.unit || 'confirmar na fonte'}
+Modo: ${auditMode ? 'AUDITORIA DE CANDIDATO EXISTENTE' : 'PESQUISA DE LACUNA'}
+Campos a investigar: ${targets.join(', ')}
+Dados já existentes: ${JSON.stringify(current)}
+Observações existentes: ${indicator.notes || 'nenhuma'}
+Pista/observação fornecida pelo usuário: ${hint || 'nenhuma'}
+
+${auditMode
+  ? 'Audite o candidato existente do Viçosa SMART. Procure evidência oficial independente e diga, no confidenceReason, se o candidato parece coerente, parcialmente coerente ou divergente. Não altere nem aprove o dado.'
+  : 'Pesquise dados municipais de Viçosa/MG. Tente primeiro localizar o resultado final oficial; se não existir, procure os componentes necessários para o cálculo.'}
+Para cada achado, exija URL exata e trecho que comprove o dado, o município e o ano. Dê preferência ao dado oficial mais recente disponível. Se a fonte publicar diretamente o resultado final do indicador, use targetField FINAL. Quando o cálculo for necessário, prefira numerador e denominador do mesmo ano. Se encontrar apenas uma página candidata, use SOURCE sem inventar valor.`;
 
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -125,12 +142,12 @@ async function researchWithOpenAI(indicator, value, targets) {
   return rows.map((row) => normalizeFinding(row, targets[0])).filter(Boolean);
 }
 
-async function researchWithTavily(indicator, targets) {
+async function researchWithTavily(indicator, targets, hint = null) {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return null;
   const queries = targets.slice(0, 2).map((target) => {
     const field = target === 'NUMERATOR' ? indicator.numeratorDescription : target === 'DENOMINATOR' ? indicator.denominatorDescription : indicator.name;
-    return `Viçosa MG ${field || indicator.name} ${indicator.standard.code} fonte oficial`;
+    return `Viçosa MG ${field || indicator.name} ${indicator.standard.code} fonte oficial ${hint || ''}`.trim();
   });
   const findings = [];
   for (const query of queries) {
@@ -187,14 +204,14 @@ async function createFindingIfNew(indicatorId, runId, finding) {
   return { created: true, item };
 }
 
-async function researchOne(indicator, runId) {
+async function researchOne(indicator, runId, hint = null) {
   const value = indicator.values?.[0] || null;
   const targets = researchTargets(indicator, value);
   let provider = 'none';
-  let rawFindings = await researchWithOpenAI(indicator, value, targets);
+  let rawFindings = await researchWithOpenAI(indicator, value, targets, hint);
   if (rawFindings !== null) provider = 'openai-web';
   if (rawFindings === null) {
-    rawFindings = await researchWithTavily(indicator, targets);
+    rawFindings = await researchWithTavily(indicator, targets, hint);
     if (rawFindings !== null) provider = 'tavily';
   }
   if (rawFindings === null) throw new Error('Agente não configurado. Defina OPENAI_API_KEY ou TAVILY_API_KEY.');
@@ -205,7 +222,9 @@ async function researchOne(indicator, runId) {
     if (result.created) created++;
   }
   const existingFindings = await prisma.agentFinding.findMany({ where: { indicatorId: indicator.id }, select: { status: true } });
-  const status = deriveIndicatorStatus(value, existingFindings);
+  const status = targets.includes('AUDIT')
+    ? 'AWAITING_VALIDATION'
+    : deriveIndicatorStatus(value, existingFindings);
   await prisma.indicator.update({
     where: { id: indicator.id },
     data: {
@@ -219,16 +238,19 @@ async function researchOne(indicator, runId) {
   return { created, provider, targets };
 }
 
-export async function runResearchBatch({ indicatorId = null, mode = 'manual' } = {}) {
+export async function runResearchBatch({ indicatorId = null, mode = 'all', hint = null } = {}) {
   const run = await prisma.agentRun.create({ data: { status: 'RUNNING', summary: `Execução ${mode}` } });
   let checked = 0, created = 0, errors = 0, sourcesFound = 0;
   const messages = [];
   try {
     const max = Math.max(1, Math.min(30, Number(process.env.AGENT_MAX_INDICATORS || 8)));
+    const statusByMode = mode === 'audit'
+      ? ['AWAITING_VALIDATION']
+      : mode === 'search'
+        ? ['NOT_STARTED', 'PARTIAL', 'NEEDS_REQUEST', 'REVIEW_NEEDED', 'IN_RESEARCH']
+        : ['AWAITING_VALIDATION', 'NOT_STARTED', 'PARTIAL', 'NEEDS_REQUEST', 'REVIEW_NEEDED', 'IN_RESEARCH'];
     const where = indicatorId ? { id: indicatorId } : {
-      // O agente trabalha somente nas lacunas reais. Dados já fornecidos/validados
-      // e candidatos aguardando revisão humana ficam fora da pesquisa automática.
-      status: { in: ['NOT_STARTED', 'PARTIAL', 'NEEDS_REQUEST', 'REVIEW_NEEDED', 'IN_RESEARCH'] },
+      status: { in: statusByMode },
       OR: [{ nextSearchAt: null }, { nextSearchAt: { lte: new Date() } }],
     };
     const indicators = await prisma.indicator.findMany({
@@ -240,7 +262,7 @@ export async function runResearchBatch({ indicatorId = null, mode = 'manual' } =
     for (const indicator of indicators) {
       checked++;
       try {
-        const result = await researchOne(indicator, run.id);
+        const result = await researchOne(indicator, run.id, hint);
         created += result.created;
         sourcesFound += result.created;
         messages.push(`${indicator.standard.code} ${indicator.code}: ${result.created} descoberta(s)`);
