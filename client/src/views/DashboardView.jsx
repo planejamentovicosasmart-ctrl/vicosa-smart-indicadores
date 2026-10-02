@@ -12,11 +12,11 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
   if (!data) return <div className="skeleton-page"><div/><div/><div/></div>;
 
   const metrics = [
-    ['Com dados', data.counts.complete, 'Indicadores com dado suficiente ou validado', CheckCircle2, 'green'],
-    ['Parciais', data.counts.partial, 'Ainda falta uma parte do cálculo', CircleDashed, 'amber'],
-    ['Sem dados', data.counts.notFound, 'Ainda precisam de investigação', Search, 'blue'],
-    ['Aguardando validação', data.counts.awaitingValidation, 'Dados já localizados, ainda não homologados', Clock3, 'purple'],
-    ['Validados', data.counts.validated, 'Dados aprovados para uso', ShieldCheck, 'teal'],
+    ['Validados / prontos', data.counts.ready, 'Dados já aceitos para uso no projeto', ShieldCheck, 'green'],
+    ['Parciais', data.counts.partial, 'Há dado, mas ainda falta completar ou revisar', CircleDashed, 'amber'],
+    ['Sem dados', data.counts.notFound, 'Prioridade do agente de pesquisa', Search, 'blue'],
+    ['Aguardando validação', data.counts.awaitingValidation, 'Novas descobertas esperando revisão humana', Clock3, 'purple'],
+    ['Novas descobertas', data.counts.discoveries, 'Candidatos encontrados pelo agente', CheckCircle2, 'teal'],
   ];
 
   return <div className="page-content">
@@ -34,10 +34,11 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
         <h3>{s.subtitle}</h3><p>{s.description}</p>
         <div className="standard-stats standard-stats-expanded">
           <span><b>{s.total}</b> total</span>
-          <span><b>{s.located}</b> com dados</span>
+          <span><b>{s.ready}</b> validados</span>
           <span><b>{s.partial}</b> parciais</span>
           <span><b>{s.awaitingValidation}</b> aguard. validação</span>
-          <span><b>{s.notStarted + s.inResearch + s.needsRequest}</b> sem dados</span>
+          <span><b>{s.missing}</b> sem dados</span>
+          {s.notApplicable > 0 && <span><b>{s.notApplicable}</b> não aplicáveis</span>}
         </div>
       </article>)}</div>
     </section>
@@ -50,7 +51,7 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
       <section className="panel-card agent-summary-card">
         <div className="panel-title"><div><span className="eyebrow">Pesquisa automática</span><h3>Atividade do agente</h3></div><Bot size={21}/></div>
         <div className="agent-orbit"><div><Bot size={27}/></div><span className="pulse p1"/><span className="pulse p2"/><span className="pulse p3"/></div>
-        <div className="agent-numbers"><div><strong>{data.counts.discoveries}</strong><span>novas descobertas</span></div><div><strong>{data.lastRun?.indicatorsChecked || 0}</strong><span>analisados na última execução</span></div><div><strong>{data.counts.awaitingValidation}</strong><span>dados aguardando validação</span></div></div>
+        <div className="agent-numbers"><div><strong>{data.counts.discoveries}</strong><span>novas descobertas</span></div><div><strong>{data.lastRun?.indicatorsChecked || 0}</strong><span>analisados na última execução</span></div><div><strong>{data.counts.notFound}</strong><span>indicadores ainda sem dados</span></div></div>
         <button className="primary-btn wide" onClick={() => go('findings')}>Revisar descobertas <ArrowRight size={16}/></button>
       </section>
     </div>
