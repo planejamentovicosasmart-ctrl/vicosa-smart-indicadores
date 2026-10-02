@@ -10,6 +10,7 @@ import { findingsRouter } from './routes/findings.js';
 import { agentRouter } from './routes/agent.js';
 import { auxiliaryRouter } from './routes/auxiliary.js';
 import { sourcesRouter } from './routes/sources.js';
+import { validationRouter } from './routes/validation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const app = express();
@@ -41,6 +42,7 @@ app.use('/api/findings', findingsRouter);
 app.use('/api/agent', agentRouter);
 app.use('/api/auxiliary', auxiliaryRouter);
 app.use('/api/sources', sourcesRouter);
+app.use('/api/validation', validationRouter);
 
 const clientDist = path.resolve(__dirname, '../../client/dist');
 app.use(express.static(clientDist));
