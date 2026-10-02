@@ -18,17 +18,19 @@ function importedReviewItem(indicator) {
     candidateValueRaw: currentValue?.finalRaw || currentValue?.numeratorRaw || currentValue?.denominatorRaw || null,
     candidateValueNumber: currentValue?.finalNumber ?? currentValue?.numeratorNumber ?? currentValue?.denominatorNumber ?? null,
     unit: indicator.unit || null,
-    referenceYear: currentValue?.numeratorYear || currentValue?.denominatorYear || null,
-    sourceName: currentValue?.sourceLabel || currentValue?.numeratorSource || currentValue?.denominatorSource || 'Base fornecida / Geterr',
+    referenceYear: currentValue?.finalYear || currentValue?.numeratorYear || currentValue?.denominatorYear || null,
+    sourceName: currentValue?.sourceLabel || currentValue?.finalSource || currentValue?.numeratorSource || currentValue?.denominatorSource || 'Base fornecida',
     sourceOrganization: null,
-    sourceType: 'Dado importado',
-    sourceUrl: currentValue?.numeratorSourceUrl || currentValue?.denominatorSourceUrl || null,
+    sourceType: currentValue?.origin === 'VICOSA_SMART' ? 'Candidato Viçosa SMART' : 'Dado importado',
+    sourceUrl: currentValue?.finalSourceUrl || currentValue?.numeratorSourceUrl || currentValue?.denominatorSourceUrl || null,
     evidenceExcerpt: indicator.notes || null,
     evidenceDocument: null,
     evidencePage: null,
     confidenceLevel: 'MEDIUM',
     confidenceScore: 60,
-    confidenceReason: 'Dado já fornecido pela equipe e mantido fora da base validada até conferência humana.',
+    confidenceReason: currentValue?.origin === 'VICOSA_SMART'
+      ? 'Candidato levantado pelo Viçosa SMART e pendente de auditoria humana.'
+      : 'Dado existente pendente de conferência humana.',
     createdAt: currentValue?.createdAt || indicator.updatedAt,
     indicator: { ...indicator, currentValue, values: undefined },
     evidence: [],
@@ -251,9 +253,13 @@ findingsRouter.post('/:id/validate', async (req, res, next) => {
         denominatorSourceUrl: current?.denominatorSourceUrl,
         finalRaw: current?.finalRaw,
         finalNumber: current?.finalNumber,
+        finalYear: current?.finalYear,
+        finalSource: current?.finalSource,
+        finalSourceUrl: current?.finalSourceUrl,
         finalFormula: current?.finalFormula,
         numeratorFormula: current?.numeratorFormula,
         denominatorFormula: current?.denominatorFormula,
+        origin: 'AGENT',
         sourceLabel: `Validado a partir da descoberta ${finding.id}`,
         validatedAt: new Date(),
         validatedBy: reviewer,
@@ -278,9 +284,15 @@ findingsRouter.post('/:id/validate', async (req, res, next) => {
       } else if (finding.targetField === 'FINAL') {
         data.finalRaw = finding.candidateValueRaw;
         data.finalNumber = finding.candidateValueNumber;
+        data.finalYear = finding.referenceYear;
+        data.finalSource = finding.sourceName;
+        data.finalSourceUrl = finding.sourceUrl;
       } else if (finding.targetField === 'UPDATE' && finding.candidateValueRaw) {
         data.finalRaw = finding.candidateValueRaw;
         data.finalNumber = finding.candidateValueNumber;
+        data.finalYear = finding.referenceYear;
+        data.finalSource = finding.sourceName;
+        data.finalSourceUrl = finding.sourceUrl;
       }
 
       const newValue = await tx.indicatorValue.create({ data });
