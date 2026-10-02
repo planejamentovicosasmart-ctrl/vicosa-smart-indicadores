@@ -33,6 +33,13 @@ function downloadBlob(content,type,name){
   setTimeout(()=>URL.revokeObjectURL(url),500);
 }
 function todayStamp(){ return new Date().toISOString().slice(0,10); }
+function foundAt(v={}){
+  const o=String(v.origin||'').toUpperCase();
+  const base=o==='GETERR'?'Geterr':o==='VICOSA_SMART'?'Viçosa SMART':o==='AGENT'?'Agente':o==='MANUAL'?'Manual':v.sourceLabel||'';
+  const src=v.finalSource||v.numeratorSource||v.denominatorSource||'';
+  if(base&&src&&src.toLowerCase()!==base.toLowerCase()) return `${base} · ${src}`;
+  return base||src||'Não encontrado';
+}
 
 export function ReportsView(){
   const [data,setData]=useState(null); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
@@ -63,9 +70,9 @@ export function ReportsView(){
   }),[items]);
 
   const csvRows=()=>{
-    const headers=['Norma','Código','Indicador','Status','Numerador','Ano Numerador','Fonte Numerador','URL Numerador','Denominador','Ano Denominador','Fonte Denominador','URL Denominador','Valor Final','Unidade','Observações'];
+    const headers=['Norma','Código','Indicador','Encontrado em','Status','Numerador','Ano Numerador','Fonte Numerador','URL Numerador','Denominador','Ano Denominador','Fonte Denominador','URL Denominador','Valor Final','Unidade','Observações'];
     const rows=items.map(i=>{ const v=i.currentValue || {}; return [
-      `ABNT NBR ISO ${i.standard?.code||''}`,i.code,i.name,statusLabels[i.status]||i.status,
+      `ABNT NBR ISO ${i.standard?.code||''}`,i.code,i.name,foundAt(v),statusLabels[i.status]||i.status,
       displayValue(v.numeratorRaw,v.numeratorNumber),v.numeratorYear||'',v.numeratorSource||'',v.numeratorSourceUrl||'',
       displayValue(v.denominatorRaw,v.denominatorNumber),v.denominatorYear||'',v.denominatorSource||'',v.denominatorSourceUrl||'',
       displayValue(v.finalRaw,v.finalNumber),i.unit||'',i.notes||''
@@ -76,9 +83,9 @@ export function ReportsView(){
   const exportCsv=()=>downloadBlob(csvRows(),'text/csv;charset=utf-8',`Relatorio_Indicadores_Geterr_Vicosa_${todayStamp()}.csv`);
 
   const printReport=()=>{
-    const rows=items.map(i=>{const v=i.currentValue||{}; return `<tr><td>${i.standard?.code||''}</td><td>${i.code||''}</td><td>${i.name||''}</td><td>${statusLabels[i.status]||i.status}</td><td>${displayValue(v.numeratorRaw,v.numeratorNumber)||'—'}</td><td>${v.numeratorYear||'—'}</td><td>${v.numeratorSource||'—'}</td><td>${displayValue(v.denominatorRaw,v.denominatorNumber)||'—'}</td><td>${v.denominatorYear||'—'}</td><td>${v.denominatorSource||'—'}</td><td>${displayValue(v.finalRaw,v.finalNumber)||'—'}</td><td>${i.unit||'—'}</td></tr>`}).join('');
+    const rows=items.map(i=>{const v=i.currentValue||{}; return `<tr><td>${i.standard?.code||''}</td><td>${i.code||''}</td><td>${i.name||''}</td><td>${foundAt(v)}</td><td>${statusLabels[i.status]||i.status}</td><td>${displayValue(v.numeratorRaw,v.numeratorNumber)||'—'}</td><td>${v.numeratorYear||'—'}</td><td>${v.numeratorSource||'—'}</td><td>${displayValue(v.denominatorRaw,v.denominatorNumber)||'—'}</td><td>${v.denominatorYear||'—'}</td><td>${v.denominatorSource||'—'}</td><td>${displayValue(v.finalRaw,v.finalNumber)||'—'}</td><td>${i.unit||'—'}</td></tr>`}).join('');
     const w=window.open('','_blank'); if(!w) return;
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Indicadores - Viçosa SMART</title><style>body{font-family:Arial,sans-serif;color:#172033;margin:32px}h1{font-size:22px;margin:0 0 6px}p{font-size:11px;color:#667085;margin:4px 0}.meta{margin:18px 0;padding:12px;background:#f4f7f9;border-radius:8px;display:flex;gap:24px}.meta b{font-size:15px}.meta span{font-size:10px;color:#667085;display:block}table{width:100%;border-collapse:collapse;font-size:8px;margin-top:14px}th{background:#0b1723;color:#fff;text-align:left;padding:6px}td{border-bottom:1px solid #dfe5ea;padding:6px;vertical-align:top}footer{margin-top:18px;font-size:9px;color:#777}@page{size:landscape;margin:10mm}@media print{body{margin:0}}</style></head><body><h1>Relatório de Indicadores ABNT — Viçosa/MG</h1><p>Viçosa SMART • Relatório preparado para compartilhamento técnico com a Geterr.</p><p>Gerado em ${new Date().toLocaleString('pt-BR')}.</p><div class="meta"><div><b>${summary.total}</b><span>indicadores no relatório</span></div><div><b>${summary.complete}</b><span>completos/validados</span></div><div><b>${summary.partial}</b><span>parciais</span></div><div><b>${summary.final}</b><span>com resultado final</span></div></div><table><thead><tr><th>ISO</th><th>Código</th><th>Indicador</th><th>Status</th><th>Numerador</th><th>Ano N</th><th>Fonte N</th><th>Denominador</th><th>Ano D</th><th>Fonte D</th><th>Resultado</th><th>Unidade</th></tr></thead><tbody>${rows}</tbody></table><footer>Somente dados da base oficial são incluídos. Descobertas do agente ainda não validadas não entram neste relatório.</footer><script>window.onload=()=>window.print();</script></body></html>`);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Indicadores - Viçosa SMART</title><style>body{font-family:Arial,sans-serif;color:#172033;margin:32px}h1{font-size:22px;margin:0 0 6px}p{font-size:11px;color:#667085;margin:4px 0}.meta{margin:18px 0;padding:12px;background:#f4f7f9;border-radius:8px;display:flex;gap:24px}.meta b{font-size:15px}.meta span{font-size:10px;color:#667085;display:block}table{width:100%;border-collapse:collapse;font-size:8px;margin-top:14px}th{background:#0b1723;color:#fff;text-align:left;padding:6px}td{border-bottom:1px solid #dfe5ea;padding:6px;vertical-align:top}footer{margin-top:18px;font-size:9px;color:#777}@page{size:landscape;margin:10mm}@media print{body{margin:0}}</style></head><body><h1>Relatório de Indicadores ABNT — Viçosa/MG</h1><p>Viçosa SMART • Relatório preparado para compartilhamento técnico com a Geterr.</p><p>Gerado em ${new Date().toLocaleString('pt-BR')}.</p><div class="meta"><div><b>${summary.total}</b><span>indicadores no relatório</span></div><div><b>${summary.complete}</b><span>completos/validados</span></div><div><b>${summary.partial}</b><span>parciais</span></div><div><b>${summary.final}</b><span>com resultado final</span></div></div><table><thead><tr><th>ISO</th><th>Código</th><th>Indicador</th><th>Encontrado em</th><th>Status</th><th>Numerador</th><th>Ano N</th><th>Fonte N</th><th>Denominador</th><th>Ano D</th><th>Fonte D</th><th>Resultado</th><th>Unidade</th></tr></thead><tbody>${rows}</tbody></table><footer>Somente dados da base oficial são incluídos. Descobertas do agente ainda não validadas não entram neste relatório.</footer><script>window.onload=()=>window.print();</script></body></html>`);
     w.document.close();
   };
 
@@ -94,7 +101,7 @@ export function ReportsView(){
     <div className="report-summary-grid"><div><span>Indicadores no relatório</span><strong>{loading?'—':summary.total}</strong></div><div><span>Completos / validados</span><strong>{loading?'—':summary.complete}</strong></div><div><span>Parciais</span><strong>{loading?'—':summary.partial}</strong></div><div><span>Com resultado final</span><strong>{loading?'—':summary.final}</strong></div></div>
 
     <section className="report-preview"><div className="report-preview-head"><div><FileBarChart2 size={18}/><span><strong>Prévia do relatório</strong><small>{standard?`ISO ${standard}`:'Todas as normas'} • {summary.total} registro(s)</small></span></div><small>CSV usa ponto e vírgula e abre normalmente no Excel.</small></div>
-      <div className="report-table-wrap"><table className="report-table"><thead><tr><th>ISO</th><th>Código</th><th>Indicador</th><th>Status</th><th>Resultado</th><th>Ano</th><th>Fonte principal</th></tr></thead><tbody>{items.slice(0,100).map(i=>{const v=i.currentValue||{}; const year=v.finalYear||v.numeratorYear||v.denominatorYear||''; const source=v.finalSource||v.numeratorSource||v.denominatorSource||''; return <tr key={i.id}><td>{i.standard?.code}</td><td><b>{i.code}</b></td><td>{i.name}</td><td><StatusBadge status={i.status}/></td><td>{displayValue(v.finalRaw,v.finalNumber)||'—'} {i.unit||''}</td><td>{year||'—'}</td><td>{source||'—'}</td></tr>})}</tbody></table></div>
+      <div className="report-table-wrap"><table className="report-table"><thead><tr><th>ISO</th><th>Código</th><th>Indicador</th><th>Encontrado em</th><th>Status</th><th>Resultado</th><th>Ano</th><th>Fonte principal</th></tr></thead><tbody>{items.slice(0,100).map(i=>{const v=i.currentValue||{}; const year=v.finalYear||v.numeratorYear||v.denominatorYear||''; const source=v.finalSource||v.numeratorSource||v.denominatorSource||''; return <tr key={i.id}><td>{i.standard?.code}</td><td><b>{i.code}</b></td><td>{i.name}</td><td>{foundAt(v)}</td><td><StatusBadge status={i.status}/></td><td>{displayValue(v.finalRaw,v.finalNumber)||'—'} {i.unit||''}</td><td>{year||'—'}</td><td>{source||'—'}</td></tr>})}</tbody></table></div>
       {items.length>100 && <div className="report-more">Mostrando os primeiros 100 registros na prévia. O arquivo exportado contém todos os {items.length} registros.</div>}
       {!loading && !items.length && <div className="empty-state"><FileBarChart2/><h3>Nenhum indicador para este filtro</h3><p>Altere a norma ou o conteúdo do relatório.</p></div>}
     </section>
