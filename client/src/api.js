@@ -62,4 +62,7 @@ export const api = {
   runAgent: (mode = 'all', hint = '') => request('/agent/run', { method: 'POST', body: JSON.stringify({ mode, hint }) }),
   auxiliary: (params = {}) => request(`/auxiliary?${new URLSearchParams(Object.entries(params).filter(([,v]) => v !== '' && v != null))}`),
   sources: () => request('/sources'),
+  validation: (params = {}) => request(`/validation?${new URLSearchParams(Object.entries(params).filter(([,v]) => v !== '' && v != null))}`),
+  runValidation: (standard = '', limit = 5) => request('/validation/run', { method: 'POST', body: JSON.stringify({ standard, limit }) }),
+  validateIndicatorSource: (id, hint = '') => request(`/validation/${id}/run`, { method: 'POST', body: JSON.stringify({ hint }) }),
 };
