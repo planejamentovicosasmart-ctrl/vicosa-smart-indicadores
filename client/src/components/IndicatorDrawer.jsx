@@ -21,6 +21,8 @@ export function IndicatorDrawer({ indicatorId, onClose, onChanged }) {
   useEffect(() => { load(); }, [indicatorId]);
 
   const v = data?.currentValue;
+  const isValidated = data?.status === 'VALIDATED';
+  const needsResearch = ['NOT_STARTED','PARTIAL','NEEDS_REQUEST','REVIEW_NEEDED','IN_RESEARCH'].includes(data?.status);
   const calc = useMemo(() => {
     if (!v) return null;
     if (v.finalFormula) return v.finalFormula;
@@ -59,6 +61,8 @@ export function IndicatorDrawer({ indicatorId, onClose, onChanged }) {
           <button className="icon-btn close" onClick={onClose}><X size={20}/></button>
         </div>
         {message && <div className={`inline-message ${/erro|não configurado/i.test(message) ? 'error' : ''}`}>{message}</div>}
+        {data && isValidated && <div className="inline-message">Dado já aceito pela equipe. A pesquisa automática passa a priorizar indicadores sem dados ou parciais.</div>}
+        {data && needsResearch && <div className="inline-message">Este indicador está elegível para a fila de pesquisa. O agente buscará primeiro resultado final oficial e, se necessário, numerador e denominador.</div>}
         {loading && !data ? <div className="drawer-loading">Carregando informações...</div> : data && <div className="drawer-content">
           <section className="detail-section formula-panel">
             <div className="section-title"><Calculator size={18}/><span>Estrutura do indicador</span></div>
@@ -77,13 +81,13 @@ export function IndicatorDrawer({ indicatorId, onClose, onChanged }) {
               <div className="detail-card-title"><Database size={17}/> Numerador</div>
               <dl><dt>Valor</dt><dd>{fmt(v?.numeratorRaw ?? v?.numeratorNumber)}</dd><dt>Ano</dt><dd>{fmt(v?.numeratorYear)}</dd><dt>Fonte</dt><dd>{fmt(v?.numeratorSource)}</dd></dl>
               {v?.numeratorSourceUrl && <a href={v.numeratorSourceUrl} target="_blank" rel="noreferrer" className="text-link">Abrir fonte <ExternalLink size={14}/></a>}
-              {!v?.numeratorRaw && v?.numeratorNumber == null && <button className="secondary-btn compact" onClick={() => copyRequest('NUMERATOR')}><FileText size={15}/> Gerar solicitação</button>}
+              {!isValidated && !v?.numeratorRaw && v?.numeratorNumber == null && <button className="secondary-btn compact" onClick={() => copyRequest('NUMERATOR')}><FileText size={15}/> Gerar solicitação</button>}
             </section>
             <section className="detail-card">
               <div className="detail-card-title"><Database size={17}/> Denominador</div>
               <dl><dt>Valor</dt><dd>{fmt(v?.denominatorRaw ?? v?.denominatorNumber)}</dd><dt>Ano</dt><dd>{fmt(v?.denominatorYear)}</dd><dt>Fonte</dt><dd>{fmt(v?.denominatorSource)}</dd></dl>
               {v?.denominatorSourceUrl && <a href={v.denominatorSourceUrl} target="_blank" rel="noreferrer" className="text-link">Abrir fonte <ExternalLink size={14}/></a>}
-              {!v?.denominatorRaw && v?.denominatorNumber == null && <button className="secondary-btn compact" onClick={() => copyRequest('DENOMINATOR')}><FileText size={15}/> Gerar solicitação</button>}
+              {!isValidated && !v?.denominatorRaw && v?.denominatorNumber == null && <button className="secondary-btn compact" onClick={() => copyRequest('DENOMINATOR')}><FileText size={15}/> Gerar solicitação</button>}
             </section>
           </div>
 
@@ -124,8 +128,9 @@ export function IndicatorDrawer({ indicatorId, onClose, onChanged }) {
           </section>
         </div>}
         <div className="drawer-actions">
-          <button className="secondary-btn" onClick={() => copyRequest(!v?.numeratorRaw ? 'NUMERATOR' : 'DENOMINATOR')}>{copied ? <Check size={17}/> : <Copy size={17}/>} {copied ? 'Copiado' : 'Gerar solicitação'}</button>
-          <button className="primary-btn" disabled={loading} onClick={research}><Search size={17}/>{loading ? 'Pesquisando...' : 'Pesquisar este indicador'}</button>
+          {!isValidated && <button className="secondary-btn" onClick={() => copyRequest(!v?.numeratorRaw ? 'NUMERATOR' : 'DENOMINATOR')}>{copied ? <Check size={17}/> : <Copy size={17}/>} {copied ? 'Copiado' : 'Gerar solicitação'}</button>}
+          {isValidated && <div className="secondary-btn" style={{pointerEvents:'none'}}><ShieldCheck size={17}/> Dado aceito</div>}
+          <button className="primary-btn" disabled={loading} onClick={research}><Search size={17}/>{loading ? 'Pesquisando...' : isValidated ? 'Pesquisar atualização' : 'Pesquisar este indicador'}</button>
         </div>
       </aside>
     </div>
