@@ -12,11 +12,11 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
   if (!data) return <div className="skeleton-page"><div/><div/><div/></div>;
 
   const metrics = [
-    ['Validados / prontos', data.counts.ready, 'Dados já aceitos para uso no projeto', ShieldCheck, 'green'],
-    ['Parciais', data.counts.partial, 'Há dado, mas ainda falta completar ou revisar', CircleDashed, 'amber'],
-    ['Sem dados', data.counts.notFound, 'Prioridade do agente de pesquisa', Search, 'blue'],
-    ['Aguardando validação', data.counts.awaitingValidation, 'Novas descobertas esperando revisão humana', Clock3, 'purple'],
-    ['Novas descobertas', data.counts.discoveries, 'Candidatos encontrados pelo agente', CheckCircle2, 'teal'],
+    ['Encontrados pelo Geterr', data.counts.geterrFound, 'Indicadores das normas já localizados na base Geterr', CheckCircle2, 'green'],
+    ['Validados pela equipe', data.counts.audited, 'Dados já auditados e aprovados pelo Viçosa SMART', ShieldCheck, 'teal'],
+    ['Para auditoria', data.counts.awaitingValidation, 'Candidatos levantados pelo Viçosa SMART ou pelo agente', Clock3, 'purple'],
+    ['Parciais', data.counts.partial, 'Há informação, mas ainda falta completar ou revisar', CircleDashed, 'amber'],
+    ['Sem dados', data.counts.notFound, 'Prioridade para pesquisa conjunta com o agente', Search, 'blue'],
   ];
 
   return <div className="page-content">
@@ -34,9 +34,10 @@ export function DashboardView({ openIndicator, go, refreshKey }) {
         <h3>{s.subtitle}</h3><p>{s.description}</p>
         <div className="standard-stats standard-stats-expanded">
           <span><b>{s.total}</b> total</span>
-          <span><b>{s.ready}</b> validados</span>
+          <span><b>{s.geterrFound}</b> Geterr</span>
+          <span><b>{s.audited}</b> validados</span>
+          <span><b>{s.awaitingValidation}</b> auditar</span>
           <span><b>{s.partial}</b> parciais</span>
-          <span><b>{s.awaitingValidation}</b> aguard. validação</span>
           <span><b>{s.missing}</b> sem dados</span>
           {s.notApplicable > 0 && <span><b>{s.notApplicable}</b> não aplicáveis</span>}
         </div>
