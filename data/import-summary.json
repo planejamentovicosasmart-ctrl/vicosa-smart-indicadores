@@ -1,23 +1,39 @@
 {
-  "source": "Base Geterr fornecida pela equipe",
-  "reconciledAt": "2026-09-08",
+  "source": "Arquivos canônicos fornecidos pela equipe Viçosa SMART",
+  "reconciledAt": "2026-10-02",
   "catalog": {
     "37120": 127,
     "37122": 79,
     "37123": 63,
     "totalIso": 269
   },
-  "providedValuesAwaitingValidation": {
-    "37120": 63,
-    "37122": 5,
-    "37123": 16,
-    "total": 84
+  "geterr": {
+    "foundNormIndicators": {
+      "37120": 61,
+      "37122": 5,
+      "37123": 15,
+      "total": 81
+    },
+    "notFound": {
+      "37120": 66,
+      "37122": 74,
+      "37123": 48,
+      "total": 188
+    },
+    "excludedNonNormRows": 1
   },
-  "auxiliaryIndicators": 114,
+  "vicosaSmart37120": {
+    "rowsWorked": 22,
+    "completeCandidatesAwaitingAudit": 14,
+    "partialCandidates": 6,
+    "withoutDataNeedsRequest": 2
+  },
+  "auxiliaryIndicators": "Gerados dinamicamente a partir de numeradores e denominadores únicos dos indicadores das normas.",
   "rules": [
-    "Valores da Geterr entram como AWAITING_VALIDATION até conferência humana.",
-    "Descobertas do agente não alteram diretamente a base oficial.",
-    "Indicadores já validados não são rebaixados por uma nova sincronização.",
-    "O dashboard mede cobertura de dados separadamente de validação."
+    "Somente indicadores pertencentes às ABNT NBR ISO 37120, 37122 e 37123 entram na base oficial.",
+    "A planilha geterr_encontrado é filtrada para remover itens que não pertencem às normas.",
+    "Os levantamentos do Viçosa SMART permanecem como candidatos até auditoria humana.",
+    "O agente pode pesquisar lacunas e auditar candidatos, mas não homologa automaticamente.",
+    "Indicadores auxiliares são componentes únicos (numeradores/denominadores), sem duplicação textual."
   ]
 }
