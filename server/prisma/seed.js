@@ -187,5 +187,8 @@ for (const row of supplement.auxiliary || []) {
 }
 
 const counts = indicators.reduce((acc, row) => ((acc[row.standard] = (acc[row.standard] || 0) + 1), acc), {});
+const statusGroups = await prisma.indicator.groupBy({ by: ['status'], _count: { _all: true } });
+const statusSummary = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
 console.log(`Seed concluído: ${imported} indicadores ABNT/ISO — 37120=${counts['37120'] || 0}, 37122=${counts['37122'] || 0}, 37123=${counts['37123'] || 0}; ${supplement.auxiliary?.length || 0} auxiliares.`);
+console.log('[seed] Status após sincronização:', statusSummary);
 await prisma.$disconnect();
