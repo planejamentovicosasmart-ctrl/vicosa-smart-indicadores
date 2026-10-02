@@ -31,7 +31,7 @@ export function FindingsView({ openIndicator, refreshKey, onChanged }) {
   const items = data?.items || [];
 
   return <div className="page-content">
-    <section className="page-header findings-header"><div><span className="eyebrow">Caixa de entrada protegida</span><h1>Descobertas e dados para validar</h1><p>Aqui ficam tanto as descobertas do agente quanto os candidatos levantados pelo Viçosa SMART que ainda precisam de auditoria.</p></div><div className="inbox-visual"><Inbox size={27}/><b>{items.length}</b><span>itens nesta visão</span></div></section>
+    <section className="page-header findings-header"><div><span className="eyebrow">Caixa de entrada do agente</span><h1>Descobertas do agente</h1><p>Aqui aparecem somente fontes, valores e evidências encontrados pelo agente de pesquisa. Os levantamentos do Viçosa SMART ficam na guia Validação ABNT.</p></div><div className="inbox-visual"><Inbox size={27}/><b>{items.length}</b><span>itens nesta visão</span></div></section>
     {msg&&<div className="inline-message error">{msg}</div>}
     <div className="filter-pills"><button className={filter==='NEW,AWAITING_VALIDATION,DIVERGENCE'?'active':''} onClick={()=>setFilter('NEW,AWAITING_VALIDATION,DIVERGENCE')}>Pendentes</button><button className={filter==='AWAITING_VALIDATION'?'active':''} onClick={()=>setFilter('AWAITING_VALIDATION')}>Aguardando validação</button><button className={filter==='VALIDATED'?'active':''} onClick={()=>setFilter('VALIDATED')}>Validadas</button><button className={filter==='REJECTED'?'active':''} onClick={()=>setFilter('REJECTED')}>Rejeitadas</button><button className={filter===''?'active':''} onClick={()=>setFilter('')}>Todas</button></div>
     <div className="findings-list">{items.map(f=>{
@@ -53,6 +53,6 @@ export function FindingsView({ openIndicator, refreshKey, onChanged }) {
         </div>
       </article>;
     })}</div>
-    {!items.length&&<div className="empty-state"><Inbox/><h3>Nenhum item nesta fila</h3><p>Candidatos do Viçosa SMART e novas descobertas do agente aparecerão aqui.</p></div>}
+    {!items.length&&<div className="empty-state"><Inbox/><h3>Nenhum item nesta fila</h3><p>Quando o agente encontrar uma nova fonte, valor ou evidência, ela aparecerá aqui para sua revisão.</p></div>}
   </div>;
 }
