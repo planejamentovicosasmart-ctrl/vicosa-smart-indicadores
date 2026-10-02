@@ -5,6 +5,7 @@ const OFFICIAL_HINTS = [
   'gov.br', 'ibge.gov.br', 'sidra.ibge.gov.br', 'cidades.gov.br', 'datasus.gov.br',
   'inep.gov.br', 'tesouro.gov.br', 'tse.jus.br', 'aneel.gov.br', 'anatel.gov.br',
   'mg.gov.br', 'vicosa.mg.gov.br', 'saaevicosa.mg.gov.br', 'ufv.br',
+  'sinisa.gov.br', 'snis.gov.br', 'cidades.ibge.gov.br', 'dados.gov.br',
 ];
 
 const SOURCE_PRIORITY = [
@@ -78,26 +79,31 @@ function normalizeFinding(raw, targetFallback) {
 }
 
 function researchTargets(indicator, value) {
-  const missing = [];
+  const targets = [];
   const hasN = Boolean(value?.numeratorRaw || value?.numeratorNumber !== null && value?.numeratorNumber !== undefined);
   const hasD = Boolean(value?.denominatorRaw || value?.denominatorNumber !== null && value?.denominatorNumber !== undefined);
-  if (!hasN) missing.push('NUMERATOR');
-  if (!hasD) missing.push('DENOMINATOR');
-  if (!missing.length) missing.push('UPDATE');
-  return missing;
+  const hasF = Boolean(value?.finalRaw || value?.finalNumber !== null && value?.finalNumber !== undefined);
+
+  // Primeiro tente localizar o resultado final já publicado por uma fonte oficial.
+  // Se não houver, procure os componentes necessários para calcular o indicador.
+  if (!hasF) targets.push('FINAL');
+  if (!hasN && indicator.numeratorDescription) targets.push('NUMERATOR');
+  if (!hasD && indicator.denominatorDescription) targets.push('DENOMINATOR');
+  if (!targets.length) targets.push('UPDATE');
+  return targets;
 }
 
 async function researchWithOpenAI(indicator, value, targets) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
-  const model = process.env.OPENAI_MODEL || 'gpt-5';
+  const model = process.env.OPENAI_MODEL || 'gpt-5.6-sol';
   const current = {
     numerator: { value: value?.numeratorRaw, year: value?.numeratorYear, source: value?.numeratorSource },
     denominator: { value: value?.denominatorRaw, year: value?.denominatorYear, source: value?.denominatorSource },
     final: { value: value?.finalRaw },
   };
   const system = `Você é um pesquisador de indicadores municipais para normas ABNT NBR ISO 37120, 37122 e 37123. Sua função é INVESTIGAR, não validar. Nunca invente valores, fontes, URLs, anos ou trechos. Use pesquisa web e priorize fontes oficiais. Se não houver dado comprovável, retorne apenas pistas de fonte ou nenhum achado. Não trate snippet de buscador como evidência final. A cidade é Viçosa/MG, Brasil. Prioridade de fontes: ${SOURCE_PRIORITY.join(' > ')}. Retorne SOMENTE JSON válido no formato {"findings":[...]}. Cada finding: targetField (NUMERATOR|DENOMINATOR|FINAL|UPDATE|SOURCE), candidateValueRaw, candidateValueNumber, unit, referenceYear, sourceName, sourceOrganization, sourceType, sourceUrl, evidenceExcerpt, evidenceDocument, evidencePage, confidenceScore, confidenceReason. confidenceScore deve refletir evidência verificável, não opinião.`;
-  const user = `Norma: ISO ${indicator.standard.code}\nCódigo: ${indicator.code}\nIndicador: ${indicator.name}\nNumerador necessário: ${indicator.numeratorDescription || 'não informado'}\nDenominador necessário: ${indicator.denominatorDescription || 'não informado'}\nUnidade esperada: ${indicator.unit || 'confirmar na fonte'}\nCampos a investigar: ${targets.join(', ')}\nDados já existentes: ${JSON.stringify(current)}\nObservações existentes: ${indicator.notes || 'nenhuma'}\n\nPesquise dados municipais de Viçosa/MG. Para cada valor candidato, exija URL exata e trecho que comprove o dado, o município e o ano. Prefira o mesmo ano para numerador e denominador. Se encontrar apenas uma página que provavelmente contém o dado, crie targetField SOURCE sem inventar valor.`;
+  const user = `Norma: ISO ${indicator.standard.code}\nCódigo: ${indicator.code}\nIndicador: ${indicator.name}\nNumerador necessário: ${indicator.numeratorDescription || 'não informado'}\nDenominador necessário: ${indicator.denominatorDescription || 'não informado'}\nUnidade esperada: ${indicator.unit || 'confirmar na fonte'}\nCampos a investigar: ${targets.join(', ')}\nDados já existentes: ${JSON.stringify(current)}\nObservações existentes: ${indicator.notes || 'nenhuma'}\n\nPesquise dados municipais de Viçosa/MG. Para cada valor candidato, exija URL exata e trecho que comprove o dado, o município e o ano. Dê preferência ao dado oficial mais recente disponível. Se a fonte publicar diretamente o resultado final do indicador, use targetField FINAL; não invente numerador/denominador. Quando o cálculo for necessário, prefira numerador e denominador do mesmo ano. Se encontrar apenas uma página que provavelmente contém o dado, crie targetField SOURCE sem inventar valor.`;
 
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -220,7 +226,9 @@ export async function runResearchBatch({ indicatorId = null, mode = 'manual' } =
   try {
     const max = Math.max(1, Math.min(30, Number(process.env.AGENT_MAX_INDICATORS || 8)));
     const where = indicatorId ? { id: indicatorId } : {
-      status: { notIn: ['VALIDATED', 'NOT_APPLICABLE'] },
+      // O agente trabalha somente nas lacunas reais. Dados já fornecidos/validados
+      // e candidatos aguardando revisão humana ficam fora da pesquisa automática.
+      status: { in: ['NOT_STARTED', 'PARTIAL', 'NEEDS_REQUEST', 'REVIEW_NEEDED', 'IN_RESEARCH'] },
       OR: [{ nextSearchAt: null }, { nextSearchAt: { lte: new Date() } }],
     };
     const indicators = await prisma.indicator.findMany({
