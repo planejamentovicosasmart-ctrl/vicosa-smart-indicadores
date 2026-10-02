@@ -16,7 +16,7 @@ function valuePresence(value) {
 indicatorsRouter.get('/', async (req, res, next) => {
   try {
     const { standard, status, q, source, page = '1', limit = '100' } = req.query;
-    const take = Math.min(250, Math.max(1, Number(limit) || 100));
+    const take = Math.min(500, Math.max(1, Number(limit) || 100));
     const skip = (Math.max(1, Number(page) || 1) - 1) * take;
     const where = {
       ...(standard ? { standard: { code: String(standard) } } : {}),
