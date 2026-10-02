@@ -113,7 +113,7 @@ export function ValidationView({ openIndicator, refreshKey, onChanged }){
           <span className="code-cell">{i.code}</span>
           <span className="name-cell"><strong>{i.name}</strong><small>ISO {i.standard.code}</small></span>
           <span className="found-origin"><b>{i.foundAt}</b><small>{i.currentValue?.sourceLabel||''}</small></span>
-          <span className="source-cell">{i.sourceName||'Fonte não identificada'}</span>
+          <span className="source-cell">{i.sourceName||'Sem fonte oficial comprovada'}</span>
           <span>{i.audit?<span className={verdictClass(i.audit.verdict)}>{verdictLabel[i.audit.verdict]||i.audit.verdict} · {i.audit.score}%</span>:<span className="audit-verdict audit-pending">Pendente</span>}</span>
           <span><ArrowRight size={16}/></span>
         </button>)}
@@ -125,7 +125,7 @@ export function ValidationView({ openIndicator, refreshKey, onChanged }){
           <div className="validation-detail-head"><div><span className="eyebrow">ISO {selected.standard.code} · {selected.code}</span><h3>{selected.name}</h3></div><button className="text-button" onClick={()=>openIndicator(selected.id)}>Abrir indicador <ArrowRight size={14}/></button></div>
           <div className="audit-current">
             <div><span>Encontrado em</span><strong>{originLabel(current)}</strong></div>
-            <div><span>Fonte atual</span><strong>{selected.sourceName||'Não identificada'}</strong>{selected.sourceUrl&&<a href={selected.sourceUrl} target="_blank" rel="noreferrer">Abrir <ExternalLink size={13}/></a>}</div>
+            <div><span>Fonte/evidência atual</span><strong>{selected.sourceName||'Ainda não comprovada'}</strong>{selected.sourceUrl&&<a href={selected.sourceUrl} target="_blank" rel="noreferrer">Abrir <ExternalLink size={13}/></a>}</div>
             <div><span>Resultado</span><strong>{display(current.finalRaw,current.finalNumber)}</strong></div>
             <div><span>Ano</span><strong>{current.finalYear||current.numeratorYear||current.denominatorYear||'—'}</strong></div>
           </div>
@@ -138,10 +138,10 @@ export function ValidationView({ openIndicator, refreshKey, onChanged }){
             {audit.recommendation&&<div className="audit-recommendation"><strong>Próximo passo</strong><p>{audit.recommendation}</p></div>}
             {audit.recalculatedValue&&<div className="audit-recalc"><span>Valor recalculado pelo agente</span><strong>{audit.recalculatedValue}</strong></div>}
             {audit.sourceUrl&&<a className="text-link" href={audit.sourceUrl} target="_blank" rel="noreferrer">Abrir fonte auditada <ExternalLink size={14}/></a>}
-          </section>:<div className="audit-empty"><ShieldCheck size={25}/><strong>Ainda não auditado</strong><p>O agente ainda não verificou se esta fonte realmente serve como evidência para este indicador.</p></div>}
+          </section>:<div className="audit-empty"><ShieldCheck size={25}/><strong>Ainda não auditado</strong><p>O agente ainda não verificou se existe uma fonte oficial que realmente sustente este dado e este indicador.</p></div>}
 
           <section className="audit-agent-box">
-            <div><Bot size={18}/><span><strong>Agente validador</strong><small>Você pode acrescentar uma pista antes da análise.</small></span></div>
+            <div><Bot size={18}/><span><strong>Agente validador</strong><small>Ele procura fonte oficial e verifica se ela realmente serve para o indicador.</small></span></div>
             <label className="search-field"><Search size={16}/><input value={hint} onChange={e=>setHint(e.target.value)} placeholder="Ex.: conferir SINISA 2025, verificar página da GASMIG..."/></label>
             <button className="primary-btn wide" disabled={busy===selected.id||!data?.configured} onClick={runOne}>{busy===selected.id?<RefreshCw className="spin" size={16}/>:<ShieldCheck size={16}/>} {busy===selected.id?'Validando...':'Validar fonte e aderência ABNT'}</button>
             <small className="audit-disclaimer">O agente produz uma auditoria técnica e rastreável; ele não certifica conformidade ABNT automaticamente.</small>
