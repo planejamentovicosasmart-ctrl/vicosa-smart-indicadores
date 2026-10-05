@@ -44,7 +44,26 @@ export function extractGeminiQueries(json) {
 export async function runGeminiGrounded({ input, schema, tools = ['google_search'] }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
+  const isGemini3 = /^gemini-3(?:\.|-)/i.test(model);
+  const payload = {
+    model,
+    input: isGemini3
+      ? input
+      : `${input}\n\nIMPORTANTE: responda SOMENTE JSON válido que corresponda ao seguinte JSON Schema:\n${JSON.stringify(schema)}`,
+    tools: tools.map((type) => ({ type })),
+  };
+  // Structured output + built-in tools is supported on Gemini 3.
+  // Gemini 2.5 Flash is used by default because Google Search grounding is
+  // available on the free tier; for it we enforce JSON via the prompt.
+  if (isGemini3) {
+    payload.response_format = {
+      type: 'text',
+      mime_type: 'application/json',
+      schema,
+    };
+  }
 
   const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
     method: 'POST',
@@ -52,16 +71,7 @@ export async function runGeminiGrounded({ input, schema, tools = ['google_search
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey,
     },
-    body: JSON.stringify({
-      model,
-      input,
-      tools: tools.map((type) => ({ type })),
-      response_format: {
-        type: 'text',
-        mime_type: 'application/json',
-        schema,
-      },
-    }),
+    body: JSON.stringify(payload),
   });
 
   const json = await response.json().catch(() => ({}));
