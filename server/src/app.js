@@ -35,7 +35,20 @@ function optionalBasicAuth(req, res, next) {
 }
 app.use(optionalBasicAuth);
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'vicosa-smart-indicadores', time: new Date().toISOString() }));
+app.get('/api/health', (_req, res) => res.json({
+  ok: true,
+  service: 'vicosa-smart-indicadores',
+  time: new Date().toISOString(),
+  providers: {
+    gemini: Boolean(process.env.GEMINI_API_KEY),
+    openai: Boolean(process.env.OPENAI_API_KEY),
+    tavily: Boolean(process.env.TAVILY_API_KEY),
+  },
+  models: {
+    gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    openai: process.env.OPENAI_MODEL || null,
+  },
+}));
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/indicators', indicatorsRouter);
 app.use('/api/findings', findingsRouter);
