@@ -24,9 +24,9 @@ agentRouter.get('/status', async (_req, res, next) => {
       prisma.indicator.count({ where: { status: 'AWAITING_VALIDATION' } }),
     ]);
     res.json({
-      configured: Boolean(process.env.OPENAI_API_KEY || process.env.TAVILY_API_KEY),
-      provider: process.env.OPENAI_API_KEY ? 'OpenAI + pesquisa web' : process.env.TAVILY_API_KEY ? 'Tavily' : 'Não configurado',
-      model: process.env.OPENAI_API_KEY ? (process.env.OPENAI_MODEL || 'gpt-5.6-sol') : null,
+      configured: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || process.env.TAVILY_API_KEY),
+      provider: process.env.GEMINI_API_KEY ? 'Gemini + Google Search' : process.env.OPENAI_API_KEY ? 'OpenAI + pesquisa web' : process.env.TAVILY_API_KEY ? 'Tavily' : 'Não configurado',
+      model: process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || 'gemini-2.5-flash') : process.env.OPENAI_API_KEY ? (process.env.OPENAI_MODEL || 'gpt-5.6-sol') : null,
       lastRun, runs, newFindings,
       researchableCount,
       missingCount,
