@@ -104,8 +104,9 @@ validationRouter.get('/', async (req,res,next)=>{
     }
 
     res.json({
-      configured:Boolean(process.env.OPENAI_API_KEY),
-      provider:process.env.OPENAI_API_KEY?'OpenAI + pesquisa web':'Não configurado',
+      configured:Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
+      provider:process.env.GEMINI_API_KEY?'Gemini + Google Search':process.env.OPENAI_API_KEY?'OpenAI + pesquisa web':'Não configurado',
+      model:process.env.GEMINI_API_KEY?(process.env.GEMINI_MODEL||'gemini-2.5-flash'):process.env.OPENAI_API_KEY?(process.env.OPENAI_MODEL||'gpt-5.6-sol'):null,
       total:rows.length,
       summary,
       items:rows,
