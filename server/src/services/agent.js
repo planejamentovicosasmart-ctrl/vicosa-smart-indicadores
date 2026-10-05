@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { cleanUrl, deriveIndicatorStatus } from '../utils/indicator.js';
+import { runGeminiGrounded } from './gemini.js';
 
 const OFFICIAL_HINTS = [
   'gov.br', 'ibge.gov.br', 'sidra.ibge.gov.br', 'cidades.gov.br', 'datasus.gov.br',
@@ -74,7 +75,7 @@ function normalizeFinding(raw, targetFallback) {
     confidenceLevel,
     confidenceScore: score,
     confidenceReason: raw.confidenceReason ? String(raw.confidenceReason).slice(0, 900) : (official ? 'URL associada a domínio institucional/oficial.' : 'Fonte necessita revisão humana.'),
-    rawPayload: raw,
+    rawPayload: raw.rawPayload || raw,
   };
 }
 
@@ -91,6 +92,116 @@ function researchTargets(indicator, value) {
   if (!hasD && indicator.denominatorDescription) targets.push('DENOMINATOR');
   if (!targets.length) targets.push('UPDATE');
   return targets;
+}
+
+
+const researchSchema = {
+  type: 'object',
+  properties: {
+    findings: {
+      type: 'array',
+      maxItems: 10,
+      items: {
+        type: 'object',
+        properties: {
+          targetField: { type: 'string', enum: ['AUDIT','NUMERATOR','DENOMINATOR','FINAL','UPDATE','SOURCE'] },
+          candidateValueRaw: { type: ['string','null'] },
+          candidateValueNumber: { type: ['number','null'] },
+          unit: { type: ['string','null'] },
+          referenceYear: { type: ['string','null'] },
+          sourceName: { type: ['string','null'] },
+          sourceOrganization: { type: ['string','null'] },
+          sourceType: { type: ['string','null'] },
+          sourceUrl: { type: ['string','null'] },
+          evidenceExcerpt: { type: ['string','null'] },
+          evidenceDocument: { type: ['string','null'] },
+          evidencePage: { type: ['string','null'] },
+          confidenceScore: { type: 'number', minimum: 0, maximum: 100 },
+          confidenceReason: { type: 'string' },
+        },
+        required: [
+          'targetField','candidateValueRaw','candidateValueNumber','unit','referenceYear',
+          'sourceName','sourceOrganization','sourceType','sourceUrl','evidenceExcerpt',
+          'evidenceDocument','evidencePage','confidenceScore','confidenceReason'
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['findings'],
+  additionalProperties: false,
+};
+
+function researchPrompt(indicator, value, targets, hint = null) {
+  const current = {
+    origin: value?.origin || null,
+    numerator: { value: value?.numeratorRaw ?? value?.numeratorNumber ?? null, year: value?.numeratorYear, source: value?.numeratorSource, url: value?.numeratorSourceUrl },
+    denominator: { value: value?.denominatorRaw ?? value?.denominatorNumber ?? null, year: value?.denominatorYear, source: value?.denominatorSource, url: value?.denominatorSourceUrl },
+    final: { value: value?.finalRaw ?? value?.finalNumber ?? null, year: value?.finalYear, source: value?.finalSource, url: value?.finalSourceUrl },
+  };
+  const auditMode = targets.includes('AUDIT');
+  return `Você é um copiloto de pesquisa de indicadores municipais das ABNT NBR ISO 37120, 37122 e 37123.
+Município: Viçosa/MG, Brasil.
+Norma: ISO ${indicator.standard.code}
+Código: ${indicator.code}
+Indicador: ${indicator.name}
+Descrição/contexto cadastrado: ${indicator.description || 'não informado'}
+Numerador: ${indicator.numeratorDescription || 'não informado'}
+Denominador: ${indicator.denominatorDescription || 'não informado'}
+Unidade: ${indicator.unit || 'confirmar na fonte'}
+Fórmula: ${indicator.formula || value?.finalFormula || 'não informada'}
+Modo: ${auditMode ? 'AUDITORIA DE CANDIDATO' : 'PESQUISA DE LACUNA'}
+Campos: ${targets.join(', ')}
+Dados atuais: ${JSON.stringify(current)}
+Observações: ${indicator.notes || 'nenhuma'}
+Pista do usuário: ${hint || 'nenhuma'}
+
+Use Google Search. Priorize: ${SOURCE_PRIORITY.join(' > ')}.
+Regras:
+- Não invente valores, anos, URLs, órgãos ou evidências.
+- A fonte precisa se referir a Viçosa/MG e sustentar exatamente este indicador ou componente.
+- Priorize fonte oficial/primária. Se encontrar agregador, procure a fonte original.
+- Se houver resultado final oficial, use FINAL. Caso contrário, procure numerador e denominador compatíveis no mesmo período.
+- Ausência de registro não prova valor zero.
+- evidenceExcerpt deve ser uma PARÁFRASE curta do que a fonte demonstra, não uma citação inventada.
+- Se não houver dado comprovável, retorne SOURCE como pista ou findings vazio.
+- No modo auditoria, compare o candidato com a evidência encontrada, mas não o aprove automaticamente.
+Retorne somente a estrutura solicitada.`;
+}
+
+async function researchWithGemini(indicator, value, targets, hint = null) {
+  if (!process.env.GEMINI_API_KEY) return null;
+  const result = await runGeminiGrounded({
+    input: researchPrompt(indicator, value, targets, hint),
+    schema: researchSchema,
+    tools: ['google_search'],
+  });
+  if (!result) return null;
+  const citations = result.citations || [];
+  const rows = Array.isArray(result.data?.findings) ? result.data.findings : [];
+  return rows.map((row) => {
+    const citedExact = row.sourceUrl && citations.find((c) => cleanUrl(c.url) === cleanUrl(row.sourceUrl));
+    const citedOfficial = citations.find((c) => isOfficialUrl(c.url));
+    const citation = citedExact || citedOfficial || citations[0] || null;
+    const enriched = {
+      ...row,
+      sourceUrl: citedExact ? citedExact.url : (row.sourceUrl || citation?.url || null),
+      sourceName: row.sourceName || citation?.title || row.sourceOrganization || 'Fonte encontrada',
+      rawPayload: {
+        provider: 'gemini-google-search',
+        model: result.model,
+        interactionId: result.interactionId,
+        searchQueries: result.queries,
+        groundingCitations: citations,
+        modelFinding: row,
+      },
+    };
+    if (citations.length && row.sourceUrl && !citedExact) {
+      enriched.confidenceScore = Math.min(Number(row.confidenceScore || 50), 60);
+      enriched.confidenceReason = `${row.confidenceReason || ''} A URL informada pelo modelo não apareceu exatamente entre as citações do Google Search; revisar a evidência.`.trim();
+    }
+    return normalizeFinding(enriched, targets[0]);
+  }).filter(Boolean);
 }
 
 async function researchWithOpenAI(indicator, value, targets, hint = null) {
@@ -209,13 +320,17 @@ async function researchOne(indicator, runId, hint = null) {
   const value = indicator.values?.[0] || null;
   const targets = researchTargets(indicator, value);
   let provider = 'none';
-  let rawFindings = await researchWithOpenAI(indicator, value, targets, hint);
-  if (rawFindings !== null) provider = 'openai-web';
+  let rawFindings = await researchWithGemini(indicator, value, targets, hint);
+  if (rawFindings !== null) provider = 'gemini-google-search';
+  if (rawFindings === null) {
+    rawFindings = await researchWithOpenAI(indicator, value, targets, hint);
+    if (rawFindings !== null) provider = 'openai-web';
+  }
   if (rawFindings === null) {
     rawFindings = await researchWithTavily(indicator, targets, hint);
     if (rawFindings !== null) provider = 'tavily';
   }
-  if (rawFindings === null) throw new Error('Agente não configurado. Defina OPENAI_API_KEY ou TAVILY_API_KEY.');
+  if (rawFindings === null) throw new Error('Agente não configurado. Defina GEMINI_API_KEY, OPENAI_API_KEY ou TAVILY_API_KEY.');
 
   let created = 0;
   for (const finding of rawFindings.slice(0, 10)) {
