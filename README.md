@@ -33,6 +33,8 @@ Ela é gerada dinamicamente a partir dos **numeradores e denominadores dos próp
 
 ## Agente de pesquisa e auditoria
 
+O provedor principal é o **Gemini 2.5 Flash + Google Search grounding**. O sistema registra as citações retornadas pelo grounding para tornar a origem das descobertas/auditorias rastreável.
+
 O agente trabalha em dois fluxos:
 
 1. **Pesquisar lacunas** — indicadores sem dados ou parciais;
@@ -63,8 +65,8 @@ A guia **Relatórios** consulta os 269 indicadores e permite exportar CSV ou imp
 - React + Vite
 - Node.js + Express
 - PostgreSQL + Prisma
-- OpenAI Responses API com pesquisa web
-- Tavily como fallback opcional
+- Gemini API com Google Search grounding como provedor principal
+- OpenAI/Tavily como fallback opcional
 - Neon para PostgreSQL
 - Render para hospedagem
 
@@ -92,6 +94,8 @@ npm start
 
 ```text
 DATABASE_URL=
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.6-sol
 TAVILY_API_KEY=
