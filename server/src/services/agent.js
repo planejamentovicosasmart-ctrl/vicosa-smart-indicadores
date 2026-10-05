@@ -185,7 +185,7 @@ async function researchWithGemini(indicator, value, targets, hint = null) {
     const citation = citedExact || citedOfficial || citations[0] || null;
     const enriched = {
       ...row,
-      sourceUrl: citedExact ? citedExact.url : (row.sourceUrl || citation?.url || null),
+      sourceUrl: citedExact ? citedExact.url : (citation?.url || row.sourceUrl || null),
       sourceName: row.sourceName || citation?.title || row.sourceOrganization || 'Fonte encontrada',
       rawPayload: {
         provider: 'gemini-google-search',
