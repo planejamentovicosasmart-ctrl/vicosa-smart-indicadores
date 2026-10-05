@@ -83,12 +83,12 @@ export function ValidationView({ openIndicator, refreshKey, onChanged }){
 
   return <div className="page-content">
     <section className="page-header validation-header">
-      <div><span className="eyebrow">Auditoria técnica para ABNT</span><h1>Validação de fontes</h1><p>O agente confere se a fonte realmente sustenta o indicador cadastrado: município, ano, conceito, numerador, denominador, unidade, cálculo e rastreabilidade. A decisão final continua sendo humana.</p></div>
+      <div><span className="eyebrow">Auditoria técnica para ABNT</span><h1>Validação de fontes</h1><p>O agente usa pesquisa web para verificar se uma fonte pública realmente sustenta o indicador: município, ano, conceito, numerador, denominador, unidade, cálculo e rastreabilidade. A decisão final continua sendo humana.</p></div>
       <button className="primary-btn" disabled={batch||!data?.configured} onClick={runBatch}>{batch?<RefreshCw className="spin" size={17}/>:<Bot size={17}/>} {batch?'Auditando...':'Auditar próxima rodada'}</button>
     </section>
 
     {msg&&<div className={`inline-message ${/erro|não configurado|falha/i.test(msg)?'error':''}`}>{msg}</div>}
-    {!data?.configured&&<div className="configuration-callout"><AlertTriangle size={20}/><div><strong>Agente de validação ainda sem chave</strong><p>Configure <code>OPENAI_API_KEY</code> no Render para validar fonte e aderência ao indicador usando pesquisa web.</p></div></div>}
+    {!data?.configured&&<div className="configuration-callout"><AlertTriangle size={20}/><div><strong>Agente de validação ainda sem chave</strong><p>Configure <code>GEMINI_API_KEY</code> no Render para validar fontes com pesquisa do Google. OpenAI fica disponível apenas como fallback.</p></div></div>}
 
     <section className="audit-metrics">
       <article><Search/><span><strong>{data?.summary?.pending??'—'}</strong><small>sem auditoria</small></span></article>
